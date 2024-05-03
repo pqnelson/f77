@@ -1,0 +1,12 @@
+/target
+*~
+
+# TeX output
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.pdf
+*.thm
+*.toc

@@ -1,0 +1,33 @@
+\documentclass[dvipsnames,HTML]{siamart190516} % {amsart}
+\usepackage{macros}
+\input{notation}
+\title{FORTRAN 77}
+\author{Alex Nelson\thanks{Email: \email{pqnelson@gmail.com}, compiled: \today}}
+% \email{pqnelson@gmail.com}
+\date{May 2, 2024}
+
+% MSC2020: 68Q60 [specification and verification]
+% 68N20 [Theory of compilers and interpreters]
+% 03B70 [Logic in Computer Science]
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We describe a minimal subset of FORTRAN 77 for the purposes of writing a
+compiler, targeting a hypothetical CPU.
+\end{abstract}
+
+\begin{AMS}
+  68Q60, 68N20, 03B70
+\end{AMS}
+
+\tableofcontents
+
+\input{tex/intro}
+\input{tex/spec}
+%% \unappendix
+\nocite{*}
+\bibliographystyle{siamplain}%{elements}
+\bibliography{docs}
+\end{document}

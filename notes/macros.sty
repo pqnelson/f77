@@ -1,0 +1,28 @@
+\usepackage{listings}
+
+\definecolor{ghCommentOld}{RGB}{36, 41, 47} % old
+\definecolor{ghComment}{RGB}{106,115,125} % 6a737d
+
+\def\githubCommentStyle{\color{ghComment}}
+
+\def\fortranCommentStyle{\itshape\color{ghComment}}
+
+\lstset{language=[77]Fortran,
+   basicstyle=\ttfamily,
+   commentstyle=\fortranCommentStyle,
+   columns=flexible,
+   basewidth={0.5em,0.5em},
+   upquote=true
+  }
+
+\@ifclassloaded{siamart190516}{
+\gdef\@addpunct#1{%
+  \relax\ifhmode
+    \ifnum\spacefactor>\@m \else#1\fi
+  \fi}
+\gdef\@mypunct{\@addpunct{.}}
+}{}
+
+
+
+\endinput

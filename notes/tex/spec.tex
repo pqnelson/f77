@@ -1,0 +1,295 @@
+\section{Specification}
+We will now describe the grammar for our particular subset of \FORTRAN/-77.
+This is similar to that found in the first chapter of van Loan and
+Coleman~\cite{vanloan1987handbook}. The goal will be that any program
+which our compiler accepts will also be compilable by any other \FORTRAN/-77 compiler.
+Like most imperative programming languages, we can partition the
+language into statements and expressions.
+
+\subsection{Program structure}
+The program consists of a \texttt{program\dots end} block. The grammar
+looks like:
+
+\begin{quotation}
+\noindent\texttt{program} $\langle$\textit{name\/}$\rangle$
+
+$\langle$\textit{declarations\/}$\rangle$
+
+$\langle$\textit{statements\/}$\rangle$
+
+\noindent\texttt{stop}
+
+\noindent\texttt{end}
+\end{quotation}
+
+\subsection{Line length}
+Each line in a \FORTRAN/-77 code must conform to certain column position
+rules:
+\begin{itemize}
+\item Column 1 --- must be blank unless the line is a comment
+\item Columns 2--5 --- Statement label which, if present, must be a
+  positive integer (optional)
+\item Column 6 --- indicates continuation of previous line (optional),
+  the continuation mark may be any character, but usually is a plus
+  sign, an ampersand, or a digit [the informal practice uses
+  ``2'' for the second line, ``3'' for the third line, etc.]
+\item Columns 7--72 --- The \FORTRAN/ statement
+\item Columns 73--80 --- Sequence number (optional)
+\end{itemize}
+
+\subsection{Statements}
+The statements which we will support include:
+\begin{itemize}
+\item input/output statements,
+\item continue statements,
+\item do-loops,
+\item if statements,
+\item goto statements,
+\item assignment statements.
+\end{itemize}
+Further, \emph{after} the \texttt{end} of the program block, we allow
+declaration of functions and subroutines.
+
+\subsubsection{Input, output}
+We will have \texttt{write(*,*)} take a comma-separated list of
+expressions and write them to the screen. Dually, we have
+\texttt{read(*,*)} take a list of variables, and read values from the
+keyboard then assign them to the variables.
+
+\subsubsection{Continue statements}
+This is the same as the ``skip'' statement in Hoare logic, a
+``\texttt{continue}'' does literally nothing. (This is what the Standard
+says as well, see \S11.11 of the \FORTRAN/ 77 Standard.)
+
+\subsubsection{Loops}
+The semantics for loops in \FORTRAN/-77 is quite different than in
+C-like languages. The syntax looks quite simple:
+\begin{quotation}
+\noindent\texttt{do} $\langle$\textit{label\/}$\rangle$
+$\langle$\textit{variable\/}$\rangle$
+\texttt{=} $\langle$\textit{initial value\/}$\rangle$\texttt{,}
+$\langle$\textit{final value\/}$\rangle$\texttt{,}
+$\langle$\textit{optional step\/}$\rangle$
+
+$\langle$\textit{statements\/}$\rangle$
+
+\noindent$\langle$\textit{label\/}$\rangle$ \texttt{continue}
+\end{quotation}
+Here the loop variable must be an integer; the initial value, final
+value, and optional step may be any arithmetic expression which
+evaluates to an integer value.
+
+This is executed in the following steps:
+\begin{enumerate}
+\item Initialize the loop variable to its initial value, and evaluate
+  the final value and loop step expressions;
+\item\label{do-loop:step2} Execute the body of the loop, which is
+  determined as the statements up to and including the statement with
+  the given label;
+\item Add to the loop variable the step amount (defaulting to 1 if omitted);
+\item Test for termination: if the step amount is negative, check the
+  loop variable is less than or equal to the stopping value; if the step
+  amount is positive, check the loop variable is greater than or equal
+  to the stopping value. In these cases, we go to the line with the
+  specified label, which is idiomatically a \texttt{continue} line;
+  otherwise, we return to Step~\ref{do-loop:step2}.
+\end{enumerate}
+Observe that the do-loop's body is always executed at least once.
+This is an overly simplified version of \FORTRAN/-77's
+do-loop.\footnote{For the gory details, see \FORTRAN/ 77 standard 11.10,
+e.g., \url{https://wg5-fortran.org/ARCHIVE/Fortran77.html}}
+
+\textbf{Caution:} the loop variable must never be changed by other
+statements in the loop's body.
+
+\subsubsection{If Statements}
+We have several forms of if-statements:
+\begin{quote}
+\noindent\texttt{if (}$\langle$\textit{logical expr\/}$\rangle$\texttt{)} $\langle$\textit{statement\/}$\rangle$
+\end{quote}
+This must be written on one single line. If more than one statement
+needs to be executed, we have to write:
+\begin{quotation}
+\noindent\texttt{if (}$\langle$\textit{logical expr\/}$\rangle$\texttt{)} \texttt{then}
+
+$\langle$\textit{statements\/}$\rangle$
+
+\noindent\texttt{endif}
+\end{quotation}
+More generally, we may have:
+\begin{quotation}
+\noindent\texttt{if (}$\langle$\textit{logical expr\/}$\rangle$\texttt{)} \texttt{then}
+
+$\langle$\textit{statements\/}$\rangle$
+
+\noindent\texttt{else if (}$\langle$\textit{logical expr\/}$\rangle$\texttt{)} \texttt{then}
+
+$\langle$\textit{statements\/}$\rangle$
+
+\dots
+
+\noindent\texttt{else}
+
+$\langle$\textit{statements\/}$\rangle$
+
+\noindent\texttt{endif}
+\end{quotation}
+The execution flow is from top to bottom.
+
+\subsubsection{Goto Statements}
+Every statement has an optional label, and we can jump to a statement
+with a label by using the ``\texttt{goto}'' statement. Its grammar:
+\begin{quote}
+\texttt{goto} $\langle$\textit{label\/}$\rangle$
+\end{quote}
+This can be combined with ``\texttt{if}'' to form loops, for example:
+\begin{lstlisting}
+      integer n
+      n = 1
+10    if (n .le. 100) then
+          write (*, *) n
+          n = 2*n
+          goto 10
+      endif
+\end{lstlisting}
+This is the equivalent of a ``while-loop'' in C. Similarly, a ``do-while''
+\begin{lstlisting}
+label continue
+C     Statements
+      if (logicalExpression) goto label
+\end{lstlisting}
+
+\subsubsection{Assignment Statements}
+Assignments have the form:
+\begin{quote}
+$\langle$\textit{variable\/}$\rangle$ \texttt{=} $\langle$\textit{expression\/}$\rangle$
+\end{quote}
+
+\subsection{Declarations}
+The declaration area consists of a sequence of declaration
+statements. This looks like:
+\begin{quote}
+$\langle$\textit{type\/}$\rangle$ $\langle$\textit{comma-separated list of identifers\/}$\rangle$
+\end{quote}
+We can have multiple declaration statements of the same type. For
+example,
+\begin{lstlisting}
+      program circle2
+      real r
+      real area
+      real pi
+      parameter (pi = 3.14159)
+
+C This program reads a real number r and prints
+C the area of a circle with radius r.
+
+      write (*, *) 'Give radius r:'
+      read  (*, *) r
+      area = pi * r * r
+      write (*, *) 'Area = ', area
+
+      stop
+      end
+\end{lstlisting}
+\subsubsection{Identifiers}
+Identifiers in \FORTRAN/ must involve no more than six characters chosen
+from the alphanumeric set \texttt{ABC\dots XYZ0123456789}, and must
+begin with a letter.
+
+\subsubsection{Types}
+We only really need 4 types, though \FORTRAN/-77 had 6 types. The types
+we support: \texttt{integer}, \texttt{real} (for floating-point
+numbers), \texttt{logical} (for Boolean values), and \texttt{character}.
+
+Note that \texttt{real} refers to single precision floating-point
+numbers, \texttt{real*8} refers to double precision floating-point
+numbers, and \texttt{real*16} refers to quad precision floating-point
+numbers [if supported].
+
+\subsubsection{Arrays}
+We declare arrays by adding its dimension to the variable name, e.g.,
+\begin{lstlisting}
+      real a(20)
+      real*64 A(3, 5)
+\end{lstlisting}
+where multi-dimensional arrays simply add the dimensions with commas. It
+is stored in memory as the sequence: $A(1,1)$, $A(1,2)$, \dots,
+$A(1,5)$, $A(2,1)$, \dots, $A(2,5)$, $A(3,1)$, $A(3,2)$, \dots, $A(3,5)$.
+For locality, you would want to loop over the right-most indexes first.
+
+\subsection{Expressions}
+We will work with a subset of all possible \FORTRAN/-77 expressions.
+
+\subsubsection{Arithmetic Expressions}
+These are built up as:
+\begin{enumerate}
+\item Primary expressions: unsigned arithmetic constant, identifier of
+  an arithmetic constant, arithmetic variable reference, arithmetic
+  array element reference, arithmetic function reference, or an
+  arithmetic expression in parentheses;
+\item Factors, which is either a primary expression or a primary
+  expression raised to the power of another factor;
+\item Terms: factors, or terms divided or multiplied by factors; 
+\item Arithmetic Expressions: a term, a signed term, an arithmetic
+  expression plus-or-minus a term.
+\end{enumerate}
+
+\subsubsection{Logical expressions}
+The literal values ``\texttt{.true.}'' and ``\texttt{.false.}'' are the
+only possible literals for logical expressions. The primitive logical
+operators, in order of highest-to-lowest precedence:
+\begin{itemize}
+\item ``\texttt{.NOT.} b'' is the logical negation of $b$;
+\item ``a \texttt{.AND.} b'' is the conjunction of $a$ and $b$ \emph{but it is not short-circuiting};
+\item ``a \texttt{.OR.} b'' is the disjunction of $a$ or $b$ \emph{but it is not short-circuiting};
+\item ``a \texttt{.EQV.} b'' tests $a$ has the same logical value as $b$;
+\item ``a \texttt{.NEQV.} b'' tests that $a$ does not have the same
+  logical value as $b$.
+\end{itemize}
+Be careful, none of these are short-circuiting.
+
+We have the following primitive logical operators which act on expressions:
+\begin{itemize}
+\item ``\texttt{.LT.}'' tests for strictly less than;
+\item ``\texttt{.LE.}'' tests for less than or equal to;
+\item ``\texttt{.EQ.}'' tests the left-hand side is equal to the
+  right-hand side;
+\item ``\texttt{.NE.}'' tests the left-hand side is not equal to the
+  right-hand side;
+\item ``\texttt{.GT.}'' tests for strictly greater than;
+\item ``\texttt{.GE.}'' tests for greater than or equal to.
+\end{itemize}
+When comparing to arithmetic expressions $\ell$ and $r$, it compares
+$\ell-r$ to zero.
+
+\subsection{Functions}
+We can define functions by writing something like
+
+\begin{lstlisting}
+      real function sgn(x)
+      real x
+
+      sgn = 0
+      if (x .GT. 0) sgn = 1
+      if (x .LT. 0) sgn = -1
+
+      return
+      end
+\end{lstlisting}
+\FORTRAN/ requires every function have a type, the return value should
+be stored in a variable with the same name as the function, and
+functions are terminated by the ``\texttt{return}'' statement.
+
+The main program must declare the type of the function, so we would use
+this function by writing something like:
+\begin{lstlisting}
+      program main
+      real sgn
+C do some calculations here
+      stop
+      end
+\end{lstlisting}
+
+
+
+% https://mesoscale.agron.iastate.edu/fortran/fort_6.htm
