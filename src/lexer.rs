@@ -110,6 +110,14 @@ fn is_identifier(c: char) -> bool {
     return c.is_alphanumeric();
 }
 
+fn is_sign(c: char) -> bool {
+    return '-' == c || '+' == c;
+}
+
+fn is_exponent(c: char) -> bool {
+    return 'e' == c || 'd' == c || 'E' == c || 'D' == c;
+}
+
 impl Lexer {
     pub fn new(input : Vec<char>) -> Self {
         Self {
@@ -220,8 +228,6 @@ impl Lexer {
     for real constants in rules 412--416 in Section 4.3.1.2 of the 1990
     Standard. 
     */
-    // TODO: handle exponents, '1.234e7' as well as '1e5', 1e-5,
-    // 1.234e-5, etc.
     fn lex_number(&mut self) -> TokenType {
         let position = self.position;
         while self.position < self.input.len() && is_digit(self.ch) {
@@ -232,6 +238,16 @@ impl Lexer {
             while self.position < self.input.len() && is_digit(self.ch) {
                 self.read_char();
             }
+            if is_exponent(self.ch) {
+                self.read_char();
+                if is_sign(self.ch) {
+                    self.read_char();
+                }
+                while self.position < self.input.len() && is_digit(self.ch) {
+                    self.read_char();
+                }
+            }
+            
             return TokenType::Float(self.input[position..self.position].to_vec());
         } else {
             return TokenType::Integer(self.input[position..self.position].to_vec());
@@ -719,9 +735,44 @@ mod tests {
     fn lex_star() {
         should_lex!("*", TokenType::Star);
     }
+
+    #[test]
+    fn lex_pie2_as_float() {
+        should_lex!("3.14159e2", TokenType::Float("3.14159e2".chars().collect()));
+    }
+
+    #[test]
+    fn lex_pi_e_minus2_as_float() {
+        should_lex!("3.14159e-2", TokenType::Float("3.14159e-2".chars().collect()));
+    }
+
+    #[test]
+    fn lex_pi_e_plus2_as_float() {
+        should_lex!("3.14159e+2", TokenType::Float("3.14159e+2".chars().collect()));
+    }
+
+    #[test]
+    fn lex_pi_screaming_e_2_as_float() {
+        should_lex!("3.14159E2", TokenType::Float("3.14159E2".chars().collect()));
+    }
+
+    #[test]
+    fn lex_pi_as_float() {
+        should_lex!("3.14159", TokenType::Float("3.14159".chars().collect()));
+    }
     
     #[test]
     fn dot_should_start_literal() {
         assert!(is_id_start('.'));
+    }
+
+    #[test]
+    fn should_not_match_f_as_exponent() {
+        assert!(!is_exponent('f'));
+    }
+
+    #[test]
+    fn should_match_e_as_exponent() {
+        assert!(is_exponent('e'));
     }
 }
