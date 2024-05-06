@@ -1,4 +1,6 @@
 \usepackage{listings}
+\RequirePackage{xcolor}
+\RequirePackage{hyperref}
 
 \definecolor{ghCommentOld}{RGB}{36, 41, 47} % old
 \definecolor{ghComment}{RGB}{106,115,125} % 6a737d
@@ -12,7 +14,8 @@
    commentstyle=\fortranCommentStyle,
    columns=flexible,
    basewidth={0.5em,0.5em},
-   upquote=true
+   upquote=true,
+%   xleftmargin=-3em,
   }
 
 \@ifclassloaded{siamart190516}{

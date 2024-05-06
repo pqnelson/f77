@@ -37,6 +37,11 @@ rules:
 \item Columns 73--80 --- Sequence number (optional)
 \end{itemize}
 
+\subsubsection{Labels}
+Labels must be nonzero positive integers no longer than 5 digits. Labels
+may have leading zeros, but these are discarded (so ``\texttt{010}'' and
+``\texttt{10}'' are treated as identical labels).
+
 \subsection{Statements}
 The statements which we will support include:
 \begin{itemize}
