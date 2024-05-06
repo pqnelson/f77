@@ -1,5 +1,5 @@
 #[derive(PartialEq, Debug)] 
-pub enum BaseTypeToken {
+pub enum BaseType {
     Integer, Real, Character, Logical
 }
 
@@ -25,7 +25,7 @@ pub enum TokenType {
     Float(Vec<char>),
     // String(Vec<char>),
 
-    Type(BaseTypeToken),
+    Type(BaseType),
     
     // keywords
     Program,
@@ -77,6 +77,12 @@ fn get_keyword_token(ident: &Vec<char>) -> Result<TokenType, String> {
         ".neqv." => Ok(TokenType::NotEquiv),
         ".eqv." => Ok(TokenType::Equiv),
         ".xor." => Ok(TokenType::Xor),
+        // types
+        "integer" => Ok(TokenType::Type(BaseType::Integer)),
+        "real" => Ok(TokenType::Type(BaseType::Real)),
+        "character" => Ok(TokenType::Type(BaseType::Character)),
+        "logical" => Ok(TokenType::Type(BaseType::Logical)),
+        
         _ => Err(String::from("Not a keyword"))
     }
 }
@@ -759,6 +765,26 @@ mod tests {
     #[test]
     fn lex_pi_as_float() {
         should_lex!("3.14159", TokenType::Float("3.14159".chars().collect()));
+    }
+    
+    #[test]
+    fn lex_character_type() {
+        should_lex!("CHARACTER", TokenType::Type(BaseType::Character));
+    }
+    
+    #[test]
+    fn lex_logical_type() {
+        should_lex!("LOGICAL", TokenType::Type(BaseType::Logical));
+    }
+    
+    #[test]
+    fn lex_real_type() {
+        should_lex!("real", TokenType::Type(BaseType::Real));
+    }
+    
+    #[test]
+    fn lex_integer_type() {
+        should_lex!("INTEGER", TokenType::Type(BaseType::Integer));
     }
     
     #[test]
