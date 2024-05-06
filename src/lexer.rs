@@ -1,13 +1,18 @@
 #[derive(PartialEq, Debug)] 
+pub enum BaseTypeToken {
+    Integer, Real, Character, Logical
+}
+
+#[derive(PartialEq, Debug)] 
 pub enum TokenType {
     // single-character tokens
     LeftParen, RightParen,
-    // Comma,
-    // Minus,
-    Plus, // TODO
-    // Slash,
-    // Star,
-    Equal, // TODO
+    Comma,
+    Minus,
+    Plus,
+    Slash,
+    Star,
+    Equal,
 
     Continuation(char), // TODO
     
@@ -17,18 +22,24 @@ pub enum TokenType {
     Label(Vec<char>),
     Float(Vec<char>),
     // String(Vec<char>),
+
+    Type(BaseTypeToken),
     
     // keywords
     Program,
     If, Then, Else, EndIf,
     Do,
-    Stop,
     Continue,
     True, False,
-    // Stop, End, Function, Return, Subroutine,
-    // Less, Leq, Eq, NotEqual, Greater, Geq
-    // Not, And, Or, Equiv, NotEquiv
+    Stop, End, Function, Return, Subroutine,
+    Less, Leq, Eq, NotEqual, Greater, Geq,
+    Not, And, Or, Equiv, NotEquiv, Xor,
     Goto,
+
+    // Provided primitive functions
+    Write, Read,
+    
+    // The End
     Illegal, Eof
 }
 
@@ -36,16 +47,34 @@ fn get_keyword_token(ident: &Vec<char>) -> Result<TokenType, String> {
     let identifier: String = ident.into_iter().collect();
     match &identifier.to_lowercase()[..] {
         "program" => Ok(TokenType::Program),
+        "do" => Ok(TokenType::Do),
+        "continue" => Ok(TokenType::Continue),
         "if" => Ok(TokenType::If),
         "then" => Ok(TokenType::Then),
-        "else" => Ok(TokenType::Else), // TODO
+        "else" => Ok(TokenType::Else),
         "endif" => Ok(TokenType::EndIf),
-        "do" => Ok(TokenType::Do),
-        "stop" => Ok(TokenType::Stop), // TODO
-        "continue" => Ok(TokenType::Continue), // TODO
-        "goto" => Ok(TokenType::Goto), // TODO
+        "end" => Ok(TokenType::End),
+        "function" => Ok(TokenType::Function),
+        "return" => Ok(TokenType::Return),
+        "subroutine" => Ok(TokenType::Subroutine),
+        "stop" => Ok(TokenType::Stop),
+        "goto" => Ok(TokenType::Goto),
+        "write" => Ok(TokenType::Write),
+        "read" => Ok(TokenType::Read),
         ".true." => Ok(TokenType::True),
-        ".false." => Ok(TokenType::False), // TODO
+        ".false." => Ok(TokenType::False),
+        ".lt." => Ok(TokenType::Less),
+        ".le." => Ok(TokenType::Leq),
+        ".eq." => Ok(TokenType::Eq),
+        ".ne." => Ok(TokenType::NotEqual),
+        ".gt." => Ok(TokenType::Greater),
+        ".geq." => Ok(TokenType::Geq),
+        ".not." => Ok(TokenType::Not),
+        ".and." => Ok(TokenType::And),
+        ".or." => Ok(TokenType::Or),
+        ".neqv." => Ok(TokenType::NotEquiv),
+        ".eqv." => Ok(TokenType::Equiv),
+        ".xor." => Ok(TokenType::Xor),
         _ => Err(String::from("Not a keyword"))
     }
 }
@@ -91,8 +120,12 @@ impl Lexer {
         }
     }
 
+    pub fn is_finished(&mut self) -> bool {
+        return self.read_position >= self.input.len();
+    }
+    
     pub fn read_char(&mut self) {
-        if self.read_position >= self.input.len() {
+        if self.is_finished() {
             self.position = self.read_position;
             self.ch = '\0';
         } else {
@@ -104,6 +137,8 @@ impl Lexer {
                 self.offset = 1;
             } else {
                 self.offset += 1;
+
+                // TODO: if self.offset > 72, issue a warning?
             }
         }
     }
@@ -145,7 +180,7 @@ impl Lexer {
 
     fn skip_rest_of_line(&mut self) {
         let line_number = self.line;
-        while line_number == self.line {
+        while line_number == self.line && !self.is_finished() {
             self.read_char();
         }
         self.read_char(); // move past the '\n' character
@@ -164,6 +199,8 @@ impl Lexer {
         return self.input[self.position + 1];
     }
 
+    // TODO: handle exponents, '1.234e7' as well as '1e5', 1e-5,
+    // 1.234e-5, etc.
     fn lex_number(&mut self) -> TokenType {
         let position = self.position;
         while self.position < self.input.len() && is_digit(self.ch) {
@@ -228,6 +265,18 @@ impl Lexer {
             },
             ')' => {
                 tok = TokenType::RightParen;
+            },
+            ',' => {
+                tok = TokenType::Comma;
+            },
+            '-' => {
+                tok = TokenType::Minus;
+            },
+            '/' => {
+                tok = TokenType::Slash; // todo
+            },
+            '*' => {
+                tok = TokenType::Star; // todo
             },
             '\0' => {
                 tok = TokenType::Eof;
@@ -453,6 +502,185 @@ mod tests {
         assert_eq!(token, TokenType::Integer("51".chars().collect()));
     }
 
+    #[macro_export]
+    macro_rules! should_lex {
+        ( $text:expr, $expected:expr ) => {
+            {
+                let prefix = "       ";
+                let input = [prefix, $text].concat();
+                let mut l = Lexer::new(input.chars().collect());
+                l.read_char();
+                let token = l.next_token();
+                assert_eq!(token, $expected);
+            }
+        };
+    }
+
+    #[test]
+    fn lex_continue() {
+        should_lex!("continue", TokenType::Continue);
+    }
+
+    #[test]
+    fn lex_else() {
+        should_lex!("else", TokenType::Else);
+    }
+
+    #[test]
+    fn lex_endif() {
+        should_lex!("endif", TokenType::EndIf);
+    }
+
+    #[test]
+    fn lex_end() {
+        should_lex!("end", TokenType::End);
+    }
+
+    #[test]
+    fn lex_function() {
+        should_lex!("function", TokenType::Function);
+    }
+
+    #[test]
+    fn lex_return() {
+        should_lex!("return", TokenType::Return);
+    }
+
+    #[test]
+    fn lex_subroutine() {
+        should_lex!("subroutine", TokenType::Subroutine);
+    }
+
+    #[test]
+    fn lex_stop() {
+        should_lex!("stop", TokenType::Stop);
+    }
+
+    #[test]
+    fn lex_goto() {
+        should_lex!("goto", TokenType::Goto);
+    }
+
+    #[test]
+    fn lex_write() {
+        should_lex!("write", TokenType::Write);
+    }
+
+    #[test]
+    fn lex_read() {
+        should_lex!("read", TokenType::Read);
+    }
+
+    #[test]
+    fn lex_true() {
+        should_lex!(".true.", TokenType::True);
+    }
+
+    #[test]
+    fn lex_false() {
+        should_lex!(".false.", TokenType::False);
+    }
+
+    #[test]
+    fn lex_lt() {
+        should_lex!(".LT.", TokenType::Less);
+    }
+
+    #[test]
+    fn lex_le() {
+        should_lex!(".LE.", TokenType::Leq);
+    }
+
+    #[test]
+    fn lex_eq() {
+        should_lex!(".EQ.", TokenType::Eq);
+    }
+
+    #[test]
+    fn lex_ne() {
+        should_lex!(".NE.", TokenType::NotEqual);
+    }
+
+    #[test]
+    fn lex_gt() {
+        should_lex!(".GT.", TokenType::Greater);
+    }
+
+    #[test]
+    fn lex_geq() {
+        should_lex!(".GEQ.", TokenType::Geq);
+    }
+    
+    #[test]
+    fn lex_not() {
+        should_lex!(".NOT.", TokenType::Not);
+    }
+    
+    #[test]
+    fn lex_and() {
+        should_lex!(".AND.", TokenType::And);
+    }
+    
+    #[test]
+    fn lex_or() {
+        should_lex!(".OR.", TokenType::Or);
+    }
+
+    #[test]
+    fn lex_eqv() {
+        should_lex!(".EQV.", TokenType::Equiv);
+    }
+
+    #[test]
+    fn lex_neqv() {
+        should_lex!(".NEQV.", TokenType::NotEquiv);
+    }
+    
+    #[test]
+    fn lex_xor() {
+        should_lex!(".XOR.", TokenType::Xor);
+    }
+    
+    #[test]
+    fn lex_equal() {
+        should_lex!("=", TokenType::Equal);
+    }
+    
+    #[test]
+    fn lex_plus() {
+        should_lex!("+", TokenType::Plus);
+    }
+    
+    #[test]
+    fn lex_left_paren() {
+        should_lex!("(", TokenType::LeftParen);
+    }
+    
+    #[test]
+    fn lex_right_paren() {
+        should_lex!(")", TokenType::RightParen);
+    }
+    
+    #[test]
+    fn lex_comma() {
+        should_lex!(",", TokenType::Comma);
+    }
+    
+    #[test]
+    fn lex_minus() {
+        should_lex!("-", TokenType::Minus);
+    }
+    
+    #[test]
+    fn lex_slash() {
+        should_lex!("/", TokenType::Slash);
+    }
+    
+    #[test]
+    fn lex_star() {
+        should_lex!("*", TokenType::Star);
+    }
+    
     #[test]
     fn dot_should_start_literal() {
         assert!(is_id_start('.'));
