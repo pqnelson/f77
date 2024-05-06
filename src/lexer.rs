@@ -11,7 +11,9 @@ pub enum TokenType {
     Minus,
     Plus,
     Slash,
+    Concatenation, // i.e., "//"
     Star,
+    Pow, // "**"
     Equal,
 
     Continuation(char), // TODO
@@ -193,12 +195,31 @@ impl Lexer {
     }
 
     fn peek(&mut self) -> char {
-        if self.position >= self.input.len() {
+        if self.position + 1 >= self.input.len() {
             return '\0';
         }
         return self.input[self.position + 1];
     }
 
+    // 4.3 of 77 Standard for Integer constants
+    // 4.4 of 77 Standard for Real constants
+    /**
+    Integer constants in FORTRAN 77 look like:
+    ```
+    integer = [sign] digit+
+    digit = 0 | 1 | 2 | ... | 9
+    sign = "+" | "-"
+    ```
+    
+    Real constants in the FORTAN 77 Standard in EBNF looks like:
+    ```
+    real = [sign] integer "." fractional_part ["E" integer]
+    ```
+
+    Fixed-form Fortran 90 gives a more well-thought out specification
+    for real constants in rules 412--416 in Section 4.3.1.2 of the 1990
+    Standard. 
+    */
     // TODO: handle exponents, '1.234e7' as well as '1e5', 1e-5,
     // 1.234e-5, etc.
     fn lex_number(&mut self) -> TokenType {
@@ -216,28 +237,28 @@ impl Lexer {
             return TokenType::Integer(self.input[position..self.position].to_vec());
         }
     }
+
+    // TODO: this should raise an error if the identifier is more
+    // than six characters long, but I'm a generous soul, so...
+    fn read_identifier(&mut self) -> Vec<char> {
+        assert!(is_id_start(self.ch));
+        let position = self.position;
+        if self.position < self.input.len() {
+            self.read_char();
+        }
+        while self.position < self.input.len() && is_identifier(self.ch) {
+            self.read_char();
+        }
+        if '.' == self.ch {
+            self.read_char();
+        }
+        // starts with a dot, ends with a dot
+        assert!(implies('.' == self.input[position],
+                        '.' == self.input[self.position-1]));
+        return self.input[position..self.position].to_vec()
+    }
     
     pub fn next_token(&mut self) -> TokenType {
-        // TODO: this should raise an error if the identifier is more
-        // than six characters long, but I'm a generous soul, so...
-        let read_identifier = |l: &mut Lexer| -> Vec<char> {
-            assert!(is_id_start(l.ch));
-            let position = l.position;
-            if l.position < l.input.len() {
-                l.read_char();
-            }
-            while l.position < l.input.len() && is_identifier(l.ch) {
-                l.read_char();
-            }
-            if '.' == l.ch {
-                l.read_char();
-            }
-            // starts with a dot, ends with a dot
-            assert!(implies('.' == l.input[position], '.' == l.input[l.position-1]));
-            l.input[position..l.position].to_vec()
-        };
-
-        // start of the method proper
         self.skip_comments();
         self.skip_whitespace();
         let tok: TokenType;
@@ -273,17 +294,25 @@ impl Lexer {
                 tok = TokenType::Minus;
             },
             '/' => {
-                tok = TokenType::Slash; // todo
+                if '/' == self.peek() {
+                    tok = TokenType::Concatenation;
+                } else {
+                    tok = TokenType::Slash;
+                }
             },
             '*' => {
-                tok = TokenType::Star; // todo
+                if '*' == self.peek() {
+                    tok = TokenType::Pow;
+                } else {
+                    tok = TokenType::Star;
+                }
             },
             '\0' => {
                 tok = TokenType::Eof;
             }
             _ => {
                 if is_letter(self.ch) || '.' == self.ch {
-                    let ident: Vec<char> = read_identifier(self);
+                    let ident: Vec<char> = self.read_identifier();
                     match get_keyword_token(&ident) {
                         Ok(keyword_token) => {
                             return keyword_token;
@@ -674,6 +703,16 @@ mod tests {
     #[test]
     fn lex_slash() {
         should_lex!("/", TokenType::Slash);
+    }
+    
+    #[test]
+    fn lex_concatenation() {
+        should_lex!("//", TokenType::Concatenation);
+    }
+    
+    #[test]
+    fn lex_pow() {
+        should_lex!("**", TokenType::Pow);
     }
     
     #[test]
