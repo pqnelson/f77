@@ -23,7 +23,7 @@ pub enum TokenType {
     Integer(Vec<char>),
     Label(Vec<char>),
     Float(Vec<char>),
-    // String(Vec<char>),
+    String(Vec<char>),
 
     Type(BaseType),
     
@@ -215,6 +215,13 @@ impl Lexer {
         return self.input[self.position + 1];
     }
 
+    fn peek_next(&mut self) -> char {
+        if self.position + 2 >= self.input.len() {
+            return '\0';
+        }
+        return self.input[self.position + 2];
+    }
+
     // 4.3 of 77 Standard for Integer constants
     // 4.4 of 77 Standard for Real constants
     /**
@@ -279,6 +286,34 @@ impl Lexer {
                         '.' == self.input[self.position-1]));
         return self.input[position..self.position].to_vec()
     }
+
+    fn is_at_end_of_string(&mut self) -> bool {
+        return '\'' == self.peek() && '\'' != self.peek_next();
+    }
+
+    fn lex_string(&mut self) -> TokenType {
+        assert!('\'' == self.ch);
+        self.read_char(); // gobble the "'"
+        let start = self.position;
+        while !self.is_at_end_of_string() && !self.is_finished() {
+            self.read_char();
+            // for escaped "'"
+            if '\'' == self.ch {
+                self.read_char();
+                assert!('\'' == self.ch);
+            }
+        }
+        
+        // unterminated string
+        if '\'' != self.ch && self.is_finished() {
+            panic!("Unterminated string on line {} starting at column {}",
+                   self.line, start);
+        }
+        
+        self.read_char();
+        let value = self.input[start..self.position].to_vec();
+        return TokenType::String(value);
+    }
     
     pub fn next_token(&mut self) -> TokenType {
         self.skip_comments();
@@ -328,6 +363,9 @@ impl Lexer {
                 } else {
                     tok = TokenType::Star;
                 }
+            },
+            '\'' => {
+                tok = self.lex_string();
             },
             '\0' => {
                 tok = TokenType::Eof;
@@ -765,6 +803,25 @@ mod tests {
     #[test]
     fn lex_pi_as_float() {
         should_lex!("3.14159", TokenType::Float("3.14159".chars().collect()));
+    }
+
+    #[test]
+    fn lex_simple_string() {
+        should_lex!("'This is a string'",
+                    TokenType::String("This is a string".chars().collect()));
+    }
+
+    #[test]
+    fn lex_simple_string_with_apostrophe() {
+        should_lex!("'This isn''t a number'",
+                    TokenType::String("This isn''t a number".chars().collect()));
+    }
+
+    #[test]
+    #[should_panic]
+    fn lex_runaway_string() {
+        should_lex!("'This is an unterminated string",
+                    TokenType::Illegal);
     }
     
     #[test]
