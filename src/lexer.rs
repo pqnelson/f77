@@ -1,3 +1,5 @@
+// TODO: consider switching back to using String instead of Vec<char>,
+//       or at least switch to Vec<u8>...
 #[derive(PartialEq, Debug)] 
 pub enum BaseType {
     Integer, Real, Character, Logical
@@ -291,6 +293,7 @@ impl Lexer {
         return '\'' == self.peek() && '\'' != self.peek_next();
     }
 
+    // TODO: consider a command-line option supporting lexing C-like strings?
     fn lex_string(&mut self) -> TokenType {
         assert!('\'' == self.ch);
         self.read_char(); // gobble the "'"
@@ -303,14 +306,15 @@ impl Lexer {
                 assert!('\'' == self.ch);
             }
         }
-        
+        self.read_char();
         // unterminated string
         if '\'' != self.ch && self.is_finished() {
             panic!("Unterminated string on line {} starting at column {}",
                    self.line, start);
         }
-        
-        self.read_char();
+        // else, terminated string
+        assert!('\'' == self.ch);
+        assert!('\'' != self.peek());
         let value = self.input[start..self.position].to_vec();
         return TokenType::String(value);
     }
