@@ -79,10 +79,16 @@ Here the loop variable must be an integer; the initial value, final
 value, and optional step may be any arithmetic expression which
 evaluates to an integer value.
 
-This is executed in the following steps:
+\FORTRAN/ 77 executes ``\texttt{do $\ell$ i = $m_{1}$, $m_{2}$, $m_{3}$}''
+in the following steps:
 \begin{enumerate}
-\item Initialize the loop variable to its initial value, and evaluate
-  the final value and loop step expressions;
+\item Evaluate $m_{1}$ to produce the value $v_{1}$, $m_{2}$ to produce
+  the value $v_{2}$, and $m_{3}$ to the value $v_{3}$ (or, if absent,
+  defaulting to $1$); the iteration
+  count is set to $\max((v_{2}-v_{1})/v_{3}, 0)$.
+\item Initialize the loop variable $i$ to its initial value. If the
+  iteration count is nonzero, continue with the next step; otherwise,
+  goto the label $\ell$.
 \item\label{do-loop:step2} Execute the body of the loop, which is
   determined as the statements up to and including the statement with
   the given label;
@@ -94,7 +100,12 @@ This is executed in the following steps:
   specified label, which is idiomatically a \texttt{continue} line;
   otherwise, we return to Step~\ref{do-loop:step2}.
 \end{enumerate}
-Observe that the do-loop's body is always executed at least once.
+Some commentaries state that the do-loop's body is always executed at least
+once, but I am unable to adequately confirm this behaviour (I don't have
+access to a \FORTRAN/ 77 compiler and \FORTRAN/ 90 changed this
+behaviour: \S8.1.4.4.2 of the \FORTRAN/
+90 Standard states that a do-loop's body is executed only after the
+iteration count is tested).
 This is an overly simplified version of \FORTRAN/-77's
 do-loop.\footnote{For the gory details, see \FORTRAN/ 77 standard 11.10,
 e.g., \url{https://wg5-fortran.org/ARCHIVE/Fortran77.html}}

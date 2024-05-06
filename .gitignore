@@ -10,3 +10,7 @@
 *.pdf
 *.thm
 *.toc
+
+a.out
+
+refs/
