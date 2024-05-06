@@ -1,0 +1,33 @@
+\section{Hoare Logic}
+Having sketched out informally the syntax and semantics for the fragment
+of \FORTRAN/ 77 our compiler is targeting, we would like to now focus on
+providing a Hoare logic for the fragment of \FORTRAN/. For the most
+part, this is straightforward (modulo the subtlety surrounding do-loops
+always executing the body of its loop at least once). The only
+difficulties we need to address are the \texttt{goto} statement and
+working with arrays.
+
+\subsection{Literature review}
+Clint and Hoare provided a rule for reasoning about \texttt{goto}
+statements. Later, de Bruin~\cite{deBruin1981goto} provided a system
+which required working with global invariants for labeled statements.
+Boyer and Moore~\cite{boyer1980vcg} have written a verification
+condition generator for \FORTRAN/, which has been instructive.
+The \textsc{Camfort} libraries\footnote{For example, \url{https://github.com/camfort/fortran-vars}} has produced a static toolkit for \FORTRAN/
+(including \FORTRAN/ 77).
+
+K. Zimmermann's ``Outline of a formal deﬁnition of FORTRAN'' (1969) is a
+tech report lost to the sands of time, but ostensibly formalized a large
+fragment of \FORTRAN/ 66 in the Vienna Definition Language.
+
+% restricted use of goto:
+% Arbib79, Luckham80, Cristian84
+% - Arbib, M. A., and S. Alagic. “Proof Rules for gotos" Acta Informatica 11 (1979), 139-148. 
+% - Cristian, F. “Correct and Robust Programs.” IEEE Trans. Software Eng. SE-10 (1984), 163-174.
+% - Luckham, D. C., and W. Polak. “Ada Exception Handling: An Axiomatic Approach.” ACM Trans.In the functional correctness setting, program correctness is defined as a correspondence between a Prog. Lang. and Syst. 2 (1980), 225-233.
+
+% arrays:
+% [Gries81] and [Reynolds81], Luckham79
+% - Gries, D. The Science of Programming. New York: Springer-Verlag, 1981. 
+% - Luckham, D. C., and N. Suzuki. “Verification of Array, Record, and Pointer Operations in Pascal.” ACM85 Trans. Prog. Lang. and Syst. 1 (1979), 226-244.
+% - Reynolds, J. C. The Craft of Programming

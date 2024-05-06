@@ -99,8 +99,22 @@ This is an overly simplified version of \FORTRAN/-77's
 do-loop.\footnote{For the gory details, see \FORTRAN/ 77 standard 11.10,
 e.g., \url{https://wg5-fortran.org/ARCHIVE/Fortran77.html}}
 
-\textbf{Caution:} the loop variable must never be changed by other
-statements in the loop's body.
+\textbf{Restrictions} on the do-loop:
+\begin{enumerate}
+\item \textbf{Caution:} the loop variable must never be changed by other
+statements in the loop's body. (\S11.10.5 of the Standard)
+\item The target label must be inside the same programming unit
+  [program, function, or subroutine]. (\S11.10.2 of the Standard)
+\item If a do-loop appears within another do-loop, the range of the
+  do-loop specified by the inner [nested] loop must be contained
+  entirely within the range of the outer [parent] loop. Similarly, if a
+  do-loop appears in an if-block (or any block statement), then it must
+  be contained entirely within that block. (\S11.10.2 of the Standard)
+\item We impose the nonstandard [but idiomatic] restriction that
+  do-loops work with integer parameters.
+\item Transfer of control [by, e.g., a \texttt{goto} or as the terminal
+  of a do-loop] into the body of a do-loop is not permitted. (\S11.10.8)
+\end{enumerate}
 
 \subsubsection{If Statements}
 We have several forms of if-statements:
@@ -158,6 +172,16 @@ label continue
 C     Statements
       if (logicalExpression) goto label
 \end{lstlisting}
+
+\textbf{Restrictions} on \texttt{goto} statements:
+\begin{enumerate}
+\item The label must be within the same programming unit [program,
+  function, or subroutine] (\S11.1)
+\item We restrict focus to the uncomputed goto statement, disallowing
+  computed goto statements (\S11.2 disallowed) and assigned goto
+  statements (\S11.3 disallowed)
+\item We stress we cannot have goto jump into the middle of a do-loop.
+\end{enumerate}
 
 \subsubsection{Assignment Statements}
 Assignments have the form:
@@ -290,6 +314,21 @@ C do some calculations here
       end
 \end{lstlisting}
 
+\subsubsection{Subroutines}
+Subroutines are similar to functions, except that they do not return a
+value, and invoking a subroutine requires different syntax (we write
+``\texttt{call subroutine(args...)}''). The semantics are similar,
+except that a subroutine call is a statement, whereas a function call
+may be an expression or a statement.
 
+\subsubsection{Parameter Passing}
+Function calls in \FORTRAN/ 77 uses the ``call-by-reference'' strategy
+for parameter passing. Effectively, this passes a pointer to the value.
+This is specified by \S15.9 of the Standard. The LLVM documentation for
+\FORTRAN/ function calling
+conventions\footnote{\url{https://releases.llvm.org/11.0.1/tools/flang/docs/Calls.html}}
+is worth reading. When passing in a literal value (e.g., in ``\texttt{foo(1)}'')
+we need to store the constant, and pass its address to the
+function.\footnote{For an enlightening discussion, see \url{https://retrocomputing.stackexchange.com/q/19929}}
 
 % https://mesoscale.agron.iastate.edu/fortran/fort_6.htm
