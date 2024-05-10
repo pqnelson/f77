@@ -1,8 +1,21 @@
+use std::fmt;
+
 // TODO: consider switching back to using String instead of Vec<char>,
 //       or at least switch to Vec<u8>...
 #[derive(PartialEq, Debug)] 
 pub enum BaseType {
     Integer, Real, Character, Logical
+}
+
+impl fmt::Display for BaseType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BaseType::Integer => return write!(f, "INTEGER"),
+            BaseType::Real => return write!(f, "REAL"),
+            BaseType::Character => return write!(f, "CHARACTER"),
+            BaseType::Logical => return write!(f, "LOGICAL"),
+        }
+    }
 }
 
 #[derive(PartialEq, Debug)] 
@@ -47,11 +60,82 @@ pub enum TokenType {
     Illegal, Eof
 }
 
+impl fmt::Display for TokenType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            // single-character tokens
+            TokenType::LeftParen => return write!(f, "("),
+            TokenType::RightParen => return write!(f, ")"),
+            TokenType::Comma => return write!(f, ","),
+            TokenType::Minus => return write!(f, "-"),
+            TokenType::Plus => return write!(f, "+"),
+            TokenType::Slash => return write!(f, "/"),
+            TokenType::Concatenation => return write!(f, "//"), // i.e., "//"
+            TokenType::Star => return write!(f, "*"),
+            TokenType::Pow => return write!(f, "**"), // "**"
+            TokenType::Equal => return write!(f, "="),
+
+            TokenType::Continuation(c) => return write!(f, "{}", c),
+    
+            // literals
+            TokenType::Identifier(i) |
+            TokenType::Integer(i) |
+            TokenType::Label(i) |
+            TokenType::Float(i) |
+            TokenType::String(i) => {
+                let s: String = i.iter().collect();
+                return write!(f, "{}", s);
+            },
+            TokenType::Type(base) => return write!(f, "{}", base),
+    
+            // keywords
+            TokenType::Program => return write!(f, "program"),
+            TokenType::If => return write!(f, "if"),
+            TokenType::Then => return write!(f, "then"),
+            TokenType::Else => return write!(f, "else"),
+            TokenType::EndIf => return write!(f, "endif"),
+            TokenType::Do => return write!(f, "do"),
+            TokenType::Continue => return write!(f, "continue"),
+            TokenType::True => return write!(f, ".TRUE."),
+            TokenType::False => return write!(f, ".FALSE."),
+            TokenType::Stop => return write!(f, "STOP"),
+            TokenType::End => return write!(f, "end"),
+            TokenType::Function => return write!(f, "function"),
+            TokenType::Return => return write!(f, "return"),
+            TokenType::Subroutine => return write!(f, "subroutine"),
+            TokenType::Less => return write!(f, ".LT."),
+            TokenType::Leq => return write!(f, ".LE."),
+            TokenType::Eq => return write!(f, ".EQ."),
+            TokenType::NotEqual => return write!(f, ".NEQ."),
+            TokenType::Greater => return write!(f, ".GT."),
+            TokenType::Geq => return write!(f, ".GEQ."),
+            TokenType::Not => return write!(f, ".NOT."),
+            TokenType::And => return write!(f, ".AND."),
+            TokenType::Or => return write!(f, ".OR."),
+            TokenType::Equiv => return write!(f, ".EQV."),
+            TokenType::NotEquiv => return write!(f, ".NEQV."),
+            TokenType::Xor => return write!(f, ".XOR."),
+            TokenType::Goto => return write!(f, "Goto"),
+            TokenType::Write => return write!(f, "Write"),
+            TokenType::Read => return write!(f, "Read"),
+            TokenType::Illegal => return write!(f, "Illegal"),
+            TokenType::Eof => return write!(f, "Eof"),
+        }
+    }
+}
+
 #[derive(PartialEq, Debug)] 
 pub struct Token {
     pub token_type: TokenType,
     pub line: i64
 }
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        return write!(f, "{}", self.token_type);
+    }
+}
+
 
 impl Token {
     pub fn new(t: TokenType, l: i64) -> Self {
