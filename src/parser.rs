@@ -130,6 +130,10 @@ impl Parser {
     }
 
     fn consume(&mut self, expected: TokenType, msg: &str) {
+        if self.check(expected) {
+            self.advance();
+        }
+        panic!("{}", msg);
     }
 
     pub fn expr(&mut self) -> Expr {
