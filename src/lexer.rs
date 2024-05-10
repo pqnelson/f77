@@ -127,12 +127,19 @@ fn is_exponent(c: char) -> bool {
 }
 
 impl Lexer {
+    // INVARIANT: 1 <= Lexer.offset 
     pub fn new(input : Vec<char>) -> Self {
+        let c;
+        if input.is_empty() {
+            c = '\0';
+        } else {
+            c = input[0];
+        }
         Self {
             input: input,
             position: 0,
             read_position: 0,
-            ch: '\0',
+            ch: c,
             line: 1,
             offset: 1
         }
@@ -148,7 +155,6 @@ impl Lexer {
             self.ch = '\0';
         } else {
             self.ch = self.input[self.read_position];
-            self.position = self.read_position;
             self.read_position += 1;
             if '\n' == self.ch {
                 self.line += 1;
@@ -161,18 +167,21 @@ impl Lexer {
         }
     }
 
-    fn skip_whitespace(&mut self) {
-        while self.ch.is_whitespace() {
+    // bool is returned so we can continue skipping comments and whitespace
+    fn skip_whitespace(&mut self) -> bool {
+        let result = self.peek().is_whitespace();
+        while self.peek().is_whitespace() {
             self.read_char();
         }
+        return result;
+
     }
 
     // We should check if this is a 'C' or a '*' (or maybe '!')
     // but we are generous in accepting comments...
     fn is_comment(&mut self) -> bool {
         if 1 != self.offset { return false; }
-        self.read_char();
-        return !self.ch.is_whitespace();
+        return !self.peek().is_whitespace();
     }
 
     // Try to parse the label for the line, if it is present; if not,
@@ -180,9 +189,10 @@ impl Lexer {
     fn try_label(&mut self) -> Option<TokenType> {
         if 2 <= self.offset && self.offset <= 5 {
             let mut l: Vec<char> = Vec::new();
-            for _i in 2..5 {
-                if !self.ch.is_whitespace() {
-                    l.push(self.ch);
+            let stop = 6 - self.offset;
+            for _i in 0..stop {
+                if !self.input[self.read_position].is_whitespace() {
+                    l.push(self.input[self.read_position]);
                 } else if !l.is_empty() {
                     return Some(TokenType::Label(l));
                 }
@@ -193,7 +203,7 @@ impl Lexer {
     }
 
     fn is_continuation(&mut self) -> bool {
-        return 6 == self.offset && !self.ch.is_whitespace();
+        return 6 == self.offset && !self.input[self.position].is_whitespace();
     }
 
     fn skip_rest_of_line(&mut self) {
@@ -204,24 +214,27 @@ impl Lexer {
         self.read_char(); // move past the '\n' character
     }
 
-    fn skip_comments(&mut self) {
+    // bool is returned so we can continue skipping comments and whitespace
+    fn skip_comments(&mut self) -> bool {
         while self.is_comment() {
             self.skip_rest_of_line();
+            return true;
         }
+        return false;
     }
 
     fn peek(&mut self) -> char {
-        if self.position + 1 >= self.input.len() {
+        if self.read_position >= self.input.len() {
             return '\0';
         }
-        return self.input[self.position + 1];
+        return self.input[self.read_position];
     }
 
     fn peek_next(&mut self) -> char {
-        if self.position + 2 >= self.input.len() {
+        if self.read_position + 1 >= self.input.len() {
             return '\0';
         }
-        return self.input[self.position + 2];
+        return self.input[self.read_position + 1];
     }
 
     // 4.3 of 77 Standard for Integer constants
@@ -274,23 +287,20 @@ impl Lexer {
     fn read_identifier(&mut self) -> Vec<char> {
         assert!(is_id_start(self.ch));
         let position = self.position;
-        if self.position < self.input.len() {
+        // gobble the period
+        if self.read_position < self.input.len() {
             self.read_char();
         }
-        while self.position < self.input.len() && is_identifier(self.ch) {
+        while self.read_position < self.input.len() && is_identifier(self.peek()) {
             self.read_char();
         }
-        if '.' == self.ch {
+        if '.' == self.input[position] && '.' == self.input[self.read_position] {
             self.read_char();
         }
         // starts with a dot, ends with a dot
         assert!(implies('.' == self.input[position],
-                        '.' == self.input[self.position-1]));
-        return self.input[position..self.position].to_vec()
-    }
-
-    fn is_at_end_of_string(&mut self) -> bool {
-        return '\'' == self.peek() && '\'' != self.peek_next();
+                        '.' == self.input[self.read_position-1]));
+        return self.input[position..self.read_position].to_vec()
     }
 
     // TODO: consider a command-line option supporting lexing C-like strings?
@@ -298,12 +308,17 @@ impl Lexer {
         assert!('\'' == self.ch);
         self.read_char(); // gobble the "'"
         let start = self.position;
-        while !self.is_at_end_of_string() && !self.is_finished() {
+        while !self.is_finished() {
             self.read_char();
             // for escaped "'"
-            if '\'' == self.ch {
-                self.read_char();
-                assert!('\'' == self.ch);
+            if '\'' == self.peek() {
+                if '\'' == self.peek_next() {
+                    self.read_char();
+                    assert!('\'' == self.ch);
+                    assert!('\'' != self.peek_next());
+                } else {
+                    break;
+                }
             }
         }
         self.read_char();
@@ -313,20 +328,21 @@ impl Lexer {
                    self.line, start);
         }
         // else, terminated string
-        assert!('\'' == self.ch);
-        assert!('\'' != self.peek());
-        let value = self.input[start..self.position].to_vec();
+        // assert!('\'' == self.ch);
+        // assert!('\'' != self.peek());
+        let value = self.input[start+1..self.read_position-1].to_vec();
         return TokenType::String(value);
     }
     
     pub fn next_token(&mut self) -> TokenType {
-        self.skip_comments();
-        self.skip_whitespace();
+        while self.skip_comments() || self.skip_whitespace() {
+            continue;
+        }
+        self.position = self.read_position;
         let tok: TokenType;
-
         if self.is_continuation() {
-            tok = TokenType::Continuation(self.ch);
             self.read_char();
+            tok = TokenType::Continuation(self.ch);
             return tok;
         }
         
@@ -334,7 +350,7 @@ impl Lexer {
             Some(v) => { return v; },
             None => {},
         }
-        
+        self.read_char();
         match self.ch {
             '=' => {
                 tok = TokenType::Equal;
@@ -396,7 +412,7 @@ impl Lexer {
                 }
             }
         }
-        self.read_char();
+        // self.read_char();
         tok
     }
 }
@@ -409,7 +425,6 @@ mod tests {
     fn should_lex_screaming_program_kw() {
         let input = String::from("      PROGRAM main\n      do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         let token = l.next_token();
         assert_eq!(token, TokenType::Program);
     }
@@ -418,7 +433,6 @@ mod tests {
     fn should_lex_program_kw() {
         let input = String::from("      program main\n      do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         let token = l.next_token();
         assert_eq!(token, TokenType::Program);
     }
@@ -427,7 +441,6 @@ mod tests {
     fn should_lex_program_name() {
         let input  = String::from("      program main\n  10  do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         let token = l.next_token();
         assert_eq!(token, TokenType::Program);
         let token = l.next_token();
@@ -438,7 +451,6 @@ mod tests {
     fn should_match_label() {
         let input  = String::from("      program main\n  10  do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         let token = l.next_token();
         assert_eq!(token, TokenType::Program);
         let token = l.next_token();
@@ -448,10 +460,17 @@ mod tests {
     }
 
     #[test]
-    fn should_lex_do() {
+    fn should_lex_label_10() {
+        let input  = String::from("\n  10  do stuff;\n      end");
+        let mut l = Lexer::new(input.chars().collect());
+        let token = l.next_token(); // label
+        assert_eq!(token, TokenType::Label("10".chars().collect()));
+    }
+    
+    #[test]
+    fn should_lex_doo() {
         let input  = String::from("      program main\n  10  do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         l.next_token(); // program
         l.next_token(); // main
         l.next_token(); // label
@@ -459,11 +478,20 @@ mod tests {
         assert_eq!(token, TokenType::Do);
     }
 
+        #[test]
+    fn should_lex_end_after_comment() {
+        let input  = String::from("      program main\nC  10  do stuff;\n      end");
+        let mut l = Lexer::new(input.chars().collect());
+        l.next_token(); // program
+        l.next_token(); // main
+        let token = l.next_token();
+        assert_eq!(token, TokenType::End);
+    }
+
     #[test]
     fn should_not_lex_invalid_kw() {
         let input  = String::from("      enddo program main\n  10  do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         let token = l.next_token();
         assert_eq!(token, TokenType::Identifier("enddo".chars().collect()));
     }
@@ -472,7 +500,6 @@ mod tests {
     fn should_lex_if_kw() {
         let input = String::from("      program main\n      if (.true.) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         l.next_token(); // program
         l.next_token(); // main
         let token = l.next_token();
@@ -483,7 +510,6 @@ mod tests {
     fn should_lex_lparen_kw() {
         let input = String::from("      program main\n      if (.true.) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         l.next_token(); // program
         l.next_token(); // main
         l.next_token(); // if
@@ -495,7 +521,6 @@ mod tests {
     fn should_lex_screaming_true_kw() {
         let input = String::from("      program main\n      if (.TRUE.) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         l.next_token(); // program
         l.next_token(); // main
         l.next_token(); // if
@@ -508,7 +533,7 @@ mod tests {
     fn should_lex_true_kw() {
         let input = String::from("      program main\n      if (.true.) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
+        // l.read_char();
         l.next_token(); // program
         l.next_token(); // main
         l.next_token(); // if
@@ -521,7 +546,6 @@ mod tests {
     fn should_lex_dot_prefix_invalid() {
         let input = String::from("      program main\n      if (.breaks.) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         l.next_token(); // program
         l.next_token(); // main
         l.next_token(); // if
@@ -535,7 +559,6 @@ mod tests {
     fn should_lex_dot_prefix_without_dot_suffix_panics() {
         let input = String::from("      program main\n      if (.breaks) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         l.next_token(); // program
         l.next_token(); // main
         l.next_token(); // if
@@ -547,7 +570,6 @@ mod tests {
     fn should_lex_then_kw() {
         let input = String::from("      program main\n      if (.true.) then\n       do stuff\n      endif\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         l.next_token(); // program
         l.next_token(); // main
         l.next_token(); // if
@@ -563,7 +585,6 @@ mod tests {
     fn should_lex_endif_kw() {
         let input = String::from("      program main\n      if (.true.) then\n       do stuff\n      endif\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         l.next_token(); // program
         l.next_token(); // main
         l.next_token(); // if
@@ -581,7 +602,6 @@ mod tests {
     fn should_lex_pi_as_float() {
         let input = String::from("      3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         let token = l.next_token();
         assert_eq!(token, TokenType::Float("3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679".chars().collect()));
     }
@@ -590,9 +610,16 @@ mod tests {
     fn should_lex_grothendieck_prime() {
         let input = String::from("      51");
         let mut l = Lexer::new(input.chars().collect());
-        l.read_char();
         let token = l.next_token();
         assert_eq!(token, TokenType::Integer("51".chars().collect()));
+    }
+
+    #[test]
+    fn should_lex_continuation() {
+        let input = String::from("     2 + 7 = 9");
+        let mut l = Lexer::new(input.chars().collect());
+        let token = l.next_token();
+        assert_eq!(token, TokenType::Continuation('2'));
     }
 
     #[macro_export]
@@ -602,7 +629,6 @@ mod tests {
                 let prefix = "       ";
                 let input = [prefix, $text].concat();
                 let mut l = Lexer::new(input.chars().collect());
-                l.read_char();
                 let token = l.next_token();
                 assert_eq!(token, $expected);
             }
