@@ -26,16 +26,29 @@ $\langle$\textit{statements\/}$\rangle$
 Each line in a \FORTRAN/-77 code must conform to certain column position
 rules:
 \begin{itemize}
-\item Column 1 --- must be blank unless the line is a comment
-\item Columns 2--5 --- Statement label which, if present, must be a
-  positive integer (optional)
+\item Column 1 --- must be blank unless the line is a comment or a label;
+\item Columns 1--5 --- Statement label which, if present, must be a
+  positive integer (optional);
 \item Column 6 --- indicates continuation of previous line (optional),
   the continuation mark may be any character, but usually is a plus
   sign, an ampersand, or a digit [the informal practice uses
-  ``2'' for the second line, ``3'' for the third line, etc.]
-\item Columns 7--72 --- The \FORTRAN/ statement
+  ``2'' for the second line, ``3'' for the third line, etc.];
+\item Columns 7--72 --- The \FORTRAN/ statement;
 \item Columns 73--80 --- Sequence number (optional)
 \end{itemize}
+The basic algorithm for determining what to do with a line:
+\begin{enumerate}
+\item Is the character in column 1 either ``\texttt{C}'' or
+  ``\texttt{*}''? If so, it is a comment, skip the rest of the
+  line. Otherwise, go to the next step.
+\item Are any characters in column 1 through 5 a nonzero digit? If so,
+  discard the leading zeros, and the number formed from these digits is
+  the label for a new statement. Otherwise, go to the next step.
+\item Is the character in column 6 not ``\texttt{0}'' or blank? If so,
+  then this line is a continuation of the previous line. Otherwise go to
+  the next step.
+\item The line is a new statement.
+\end{enumerate}
 
 \subsubsection{Labels}
 Labels must be nonzero positive integers no longer than 5 digits. Labels
@@ -258,7 +271,9 @@ $A(1,5)$, $A(2,1)$, \dots, $A(2,5)$, $A(3,1)$, $A(3,2)$, \dots, $A(3,5)$.
 For locality, you would want to loop over the right-most indexes first.
 
 \subsection{Expressions}
-We will work with a subset of all possible \FORTRAN/-77 expressions.
+We will work with a subset of all possible \FORTRAN/-77
+expressions.\footnote{The entire grammar for \FORTRAN/ 77 may be found
+at \url{https://slebok.github.io/zoo/fortran/f90/waite-cordy/extracted/index.html}}
 
 \subsubsection{Arithmetic Expressions}
 These are built up as:
