@@ -18,7 +18,7 @@ pub enum TokenType {
     Pow, // "**"
     Equal,
 
-    Continuation(char), // TODO
+    Continuation(char),
     
     // literals
     Identifier(Vec<char>),
@@ -45,6 +45,21 @@ pub enum TokenType {
     
     // The End
     Illegal, Eof
+}
+
+#[derive(PartialEq, Debug)] 
+pub struct Token {
+    pub token_type: TokenType,
+    pub line: i64
+}
+
+impl Token {
+    pub fn new(t: TokenType, l: i64) -> Self {
+        Self {
+            token_type: t,
+            line: l
+        }
+    }
 }
 
 fn get_keyword_token(ident: &Vec<char>) -> Result<TokenType, String> {
@@ -100,10 +115,6 @@ pub struct Lexer {
 
 fn is_letter(ch: char) -> bool {
     return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z';
-}
-
-fn is_digit(ch: char) -> bool {
-    return '0' <= ch && ch <= '9';
 }
 
 fn implies(antecedent: bool, consequent: bool) -> bool {
@@ -211,7 +222,7 @@ impl Lexer {
         while line_number == self.line && !self.is_finished() {
             self.read_char();
         }
-        self.read_char(); // move past the '\n' character
+        assert!(self.line != line_number);
     }
 
     // bool is returned so we can continue skipping comments and whitespace
@@ -258,12 +269,12 @@ impl Lexer {
     */
     fn lex_number(&mut self) -> TokenType {
         let position = self.position;
-        while self.position < self.input.len() && is_digit(self.ch) {
+        while self.position < self.input.len() && self.ch.is_ascii_digit() {
             self.read_char();
         }
-        if '.' == self.ch && is_digit(self.peek()) {
+        if '.' == self.ch && self.peek().is_ascii_digit() {
             self.read_char();
-            while self.position < self.input.len() && is_digit(self.ch) {
+            while self.position < self.input.len() && self.ch.is_ascii_digit() {
                 self.read_char();
             }
             if is_exponent(self.ch) {
@@ -271,7 +282,7 @@ impl Lexer {
                 if is_sign(self.ch) {
                     self.read_char();
                 }
-                while self.position < self.input.len() && is_digit(self.ch) {
+                while self.position < self.input.len() && self.ch.is_ascii_digit() {
                     self.read_char();
                 }
             }
@@ -309,6 +320,8 @@ impl Lexer {
         self.read_char(); // gobble the "'"
         let start = self.position;
         while !self.is_finished() {
+            println!("lex_string() read_position = {}",
+                     self.read_position);
             self.read_char();
             // for escaped "'"
             if '\'' == self.peek() {
@@ -334,7 +347,7 @@ impl Lexer {
         return TokenType::String(value);
     }
     
-    pub fn next_token(&mut self) -> TokenType {
+    pub fn next_token_type(&mut self) -> TokenType {
         while self.skip_comments() || self.skip_whitespace() {
             continue;
         }
@@ -351,6 +364,7 @@ impl Lexer {
             None => {},
         }
         self.read_char();
+        println!("next_token_type = {}", self.ch);
         match self.ch {
             '=' => {
                 tok = TokenType::Equal;
@@ -385,13 +399,16 @@ impl Lexer {
                 }
             },
             '\'' => {
+                println!("Trying to lex a string...");
                 tok = self.lex_string();
             },
             '\0' => {
                 tok = TokenType::Eof;
-            }
+            },
             _ => {
-                if is_letter(self.ch) || '.' == self.ch {
+                println!("Falling through default, char = {}",
+                         self.ch);
+                if self.ch.is_ascii_alphabetic() || '.' == self.ch {
                     let ident: Vec<char> = self.read_identifier();
                     match get_keyword_token(&ident) {
                         Ok(keyword_token) => {
@@ -405,7 +422,7 @@ impl Lexer {
                             }
                         }
                     }
-                } else if is_digit(self.ch) {
+                } else if self.ch.is_ascii_digit() {
                     return self.lex_number();
                 } else {
                     return TokenType::Illegal;
@@ -414,6 +431,12 @@ impl Lexer {
         }
         // self.read_char();
         tok
+    }
+    
+    pub fn next_token(&mut self) -> Token {
+        let t: TokenType = self.next_token_type();
+        let l = self.line;
+        return Token::new(t, l);
     }
 }
 
@@ -425,7 +448,7 @@ mod tests {
     fn should_lex_screaming_program_kw() {
         let input = String::from("      PROGRAM main\n      do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        let token = l.next_token();
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Program);
     }
 
@@ -433,7 +456,7 @@ mod tests {
     fn should_lex_program_kw() {
         let input = String::from("      program main\n      do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        let token = l.next_token();
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Program);
     }
 
@@ -441,21 +464,23 @@ mod tests {
     fn should_lex_program_name() {
         let input  = String::from("      program main\n  10  do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        let token = l.next_token();
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Program);
-        let token = l.next_token();
-        assert_eq!(token, TokenType::Identifier("main".chars().collect()));
+        let token = l.next_token_type();
+        assert_eq!(token,
+                   TokenType::Identifier("main".chars().collect()));
     }
 
     #[test]
     fn should_match_label() {
         let input  = String::from("      program main\n  10  do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        let token = l.next_token();
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Program);
-        let token = l.next_token();
-        assert_eq!(token, TokenType::Identifier("main".chars().collect()));
-        let token = l.next_token();
+        let token = l.next_token_type();
+        assert_eq!(token,
+                   TokenType::Identifier("main".chars().collect()));
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Label("10".chars().collect()));
     }
 
@@ -463,18 +488,23 @@ mod tests {
     fn should_lex_label_10() {
         let input  = String::from("\n  10  do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        let token = l.next_token(); // label
+        let token = l.next_token_type(); // label
         assert_eq!(token, TokenType::Label("10".chars().collect()));
     }
     
     #[test]
     fn should_lex_doo() {
+        println!("Starting lex do test...");
         let input  = String::from("      program main\n  10  do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.next_token(); // program
-        l.next_token(); // main
-        l.next_token(); // label
-        let token = l.next_token();
+        println!("Trying to get first token");
+        let token = l.next_token_type(); // program
+        assert_eq!(token, TokenType::Program);
+        println!("Trying to get 'main' identifier token");
+        l.next_token_type(); // main
+        println!("Trying to get label token");
+        l.next_token_type(); // label
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Do);
     }
 
@@ -484,7 +514,7 @@ mod tests {
         let mut l = Lexer::new(input.chars().collect());
         l.next_token(); // program
         l.next_token(); // main
-        let token = l.next_token();
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::End);
     }
 
@@ -492,7 +522,7 @@ mod tests {
     fn should_not_lex_invalid_kw() {
         let input  = String::from("      enddo program main\n  10  do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        let token = l.next_token();
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Identifier("enddo".chars().collect()));
     }
 
@@ -500,9 +530,9 @@ mod tests {
     fn should_lex_if_kw() {
         let input = String::from("      program main\n      if (.true.) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.next_token(); // program
-        l.next_token(); // main
-        let token = l.next_token();
+        l.next_token_type(); // program
+        l.next_token_type(); // main
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::If);
     }
 
@@ -510,10 +540,10 @@ mod tests {
     fn should_lex_lparen_kw() {
         let input = String::from("      program main\n      if (.true.) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.next_token(); // program
-        l.next_token(); // main
-        l.next_token(); // if
-        let token = l.next_token();
+        l.next_token_type(); // program
+        l.next_token_type(); // main
+        l.next_token_type(); // if
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::LeftParen);
     }
 
@@ -521,11 +551,11 @@ mod tests {
     fn should_lex_screaming_true_kw() {
         let input = String::from("      program main\n      if (.TRUE.) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.next_token(); // program
-        l.next_token(); // main
-        l.next_token(); // if
-        l.next_token(); // (
-        let token = l.next_token();
+        l.next_token_type(); // program
+        l.next_token_type(); // main
+        l.next_token_type(); // if
+        l.next_token_type(); // (
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::True);
     }
 
@@ -533,12 +563,11 @@ mod tests {
     fn should_lex_true_kw() {
         let input = String::from("      program main\n      if (.true.) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        // l.read_char();
-        l.next_token(); // program
-        l.next_token(); // main
-        l.next_token(); // if
-        l.next_token(); // (
-        let token = l.next_token();
+        l.next_token_type(); // program
+        l.next_token_type(); // main
+        l.next_token_type(); // if
+        l.next_token_type(); // (
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::True);
     }
     
@@ -546,11 +575,11 @@ mod tests {
     fn should_lex_dot_prefix_invalid() {
         let input = String::from("      program main\n      if (.breaks.) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.next_token(); // program
-        l.next_token(); // main
-        l.next_token(); // if
-        l.next_token(); // (
-        let token = l.next_token();
+        l.next_token_type(); // program
+        l.next_token_type(); // main
+        l.next_token_type(); // if
+        l.next_token_type(); // (
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Illegal);
     }
 
@@ -559,25 +588,25 @@ mod tests {
     fn should_lex_dot_prefix_without_dot_suffix_panics() {
         let input = String::from("      program main\n      if (.breaks) then\n       do stuff\n      end\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.next_token(); // program
-        l.next_token(); // main
-        l.next_token(); // if
-        l.next_token(); // (
-        l.next_token(); // .breaks
+        l.next_token_type(); // program
+        l.next_token_type(); // main
+        l.next_token_type(); // if
+        l.next_token_type(); // (
+        l.next_token_type(); // .breaks
     }
     
     #[test]
     fn should_lex_then_kw() {
         let input = String::from("      program main\n      if (.true.) then\n       do stuff\n      endif\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.next_token(); // program
-        l.next_token(); // main
-        l.next_token(); // if
-        l.next_token(); // (
-        l.next_token(); // .true.
-        let token = l.next_token();
+        l.next_token_type(); // program
+        l.next_token_type(); // main
+        l.next_token_type(); // if
+        l.next_token_type(); // (
+        l.next_token_type(); // .true.
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::RightParen);
-        let token = l.next_token();
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Then);
     }
     
@@ -585,16 +614,16 @@ mod tests {
     fn should_lex_endif_kw() {
         let input = String::from("      program main\n      if (.true.) then\n       do stuff\n      endif\n      stop\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        l.next_token(); // program
-        l.next_token(); // main
-        l.next_token(); // if
-        l.next_token(); // (
-        l.next_token(); // .true.
-        l.next_token(); // )
-        l.next_token(); // then
-        l.next_token(); // do
-        l.next_token(); // stuff
-        let token = l.next_token();
+        l.next_token_type(); // program
+        l.next_token_type(); // main
+        l.next_token_type(); // if
+        l.next_token_type(); // (
+        l.next_token_type(); // .true.
+        l.next_token_type(); // )
+        l.next_token_type(); // then
+        l.next_token_type(); // do
+        l.next_token_type(); // stuff
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::EndIf);
     }
     
@@ -602,7 +631,7 @@ mod tests {
     fn should_lex_pi_as_float() {
         let input = String::from("      3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679");
         let mut l = Lexer::new(input.chars().collect());
-        let token = l.next_token();
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Float("3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679".chars().collect()));
     }
     
@@ -610,7 +639,7 @@ mod tests {
     fn should_lex_grothendieck_prime() {
         let input = String::from("      51");
         let mut l = Lexer::new(input.chars().collect());
-        let token = l.next_token();
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Integer("51".chars().collect()));
     }
 
@@ -618,7 +647,7 @@ mod tests {
     fn should_lex_continuation() {
         let input = String::from("     2 + 7 = 9");
         let mut l = Lexer::new(input.chars().collect());
-        let token = l.next_token();
+        let token = l.next_token_type();
         assert_eq!(token, TokenType::Continuation('2'));
     }
 
@@ -629,7 +658,7 @@ mod tests {
                 let prefix = "       ";
                 let input = [prefix, $text].concat();
                 let mut l = Lexer::new(input.chars().collect());
-                let token = l.next_token();
+                let token = l.next_token_type();
                 assert_eq!(token, $expected);
             }
         };
