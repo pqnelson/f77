@@ -353,27 +353,28 @@ impl Lexer {
     */
     fn lex_number(&mut self) -> TokenType {
         let position = self.position;
-        while self.position < self.input.len() && self.ch.is_ascii_digit() {
+        assert!(self.ch.is_ascii_digit());
+        while !self.is_finished() && self.peek().is_ascii_digit() {
             self.read_char();
         }
-        if '.' == self.ch && self.peek().is_ascii_digit() {
+        if '.' == self.peek() && self.peek_next().is_ascii_digit() {
             self.read_char();
-            while self.position < self.input.len() && self.ch.is_ascii_digit() {
+            while !self.is_finished() && self.peek().is_ascii_digit() {
                 self.read_char();
             }
-            if is_exponent(self.ch) {
+            if is_exponent(self.peek()) {
                 self.read_char();
-                if is_sign(self.ch) {
+                if is_sign(self.peek()) {
                     self.read_char();
                 }
-                while self.position < self.input.len() && self.ch.is_ascii_digit() {
+                while !self.is_finished() && self.peek().is_ascii_digit() {
                     self.read_char();
                 }
             }
             
-            return TokenType::Float(self.input[position..self.position].to_vec());
+            return TokenType::Float(self.input[position..self.read_position].to_vec());
         } else {
-            return TokenType::Integer(self.input[position..self.position].to_vec());
+            return TokenType::Integer(self.input[position..self.read_position].to_vec());
         }
     }
 
@@ -470,6 +471,7 @@ impl Lexer {
             },
             '/' => {
                 if '/' == self.peek() {
+                    self.read_char();
                     tok = TokenType::Concatenation;
                 } else {
                     tok = TokenType::Slash;
@@ -477,13 +479,13 @@ impl Lexer {
             },
             '*' => {
                 if '*' == self.peek() {
+                    self.read_char();
                     tok = TokenType::Pow;
                 } else {
                     tok = TokenType::Star;
                 }
             },
             '\'' => {
-                println!("Trying to lex a string...");
                 tok = self.lex_string();
             },
             '\0' => {
@@ -578,15 +580,11 @@ mod tests {
     
     #[test]
     fn should_lex_doo() {
-        println!("Starting lex do test...");
         let input  = String::from("      program main\n  10  do stuff;\n      end");
         let mut l = Lexer::new(input.chars().collect());
-        println!("Trying to get first token");
         let token = l.next_token_type(); // program
         assert_eq!(token, TokenType::Program);
-        println!("Trying to get 'main' identifier token");
         l.next_token_type(); // main
-        println!("Trying to get label token");
         l.next_token_type(); // label
         let token = l.next_token_type();
         assert_eq!(token, TokenType::Do);
@@ -733,6 +731,18 @@ mod tests {
         let mut l = Lexer::new(input.chars().collect());
         let token = l.next_token_type();
         assert_eq!(token, TokenType::Continuation('2'));
+    }
+
+    #[test]
+    fn should_lex_int_pow_int() {
+        let input = String::from("      3 ** 4");
+        let mut l = Lexer::new(input.chars().collect());
+        let token = l.next_token_type();
+        assert_eq!(token, TokenType::Integer("3".chars().collect()));
+        let token = l.next_token_type();
+        assert_eq!(token, TokenType::Pow);
+        let token = l.next_token_type();
+        assert_eq!(token, TokenType::Integer("4".chars().collect()));
     }
 
     #[macro_export]
