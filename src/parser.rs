@@ -5,6 +5,16 @@ use crate::lexer::{
     Lexer
 };
 
+/*
+Current plans:
+1. "Named data references" expression
+2. Simple statements (assignment?)
+3. If-then-else statements
+4. Labels and goto statements
+5. do-loops
+6. Program Units
+*/
+
 #[derive(PartialEq, Debug)]
 pub enum BinOp {
     Plus, Minus, Times, Divide, Power,
@@ -103,8 +113,10 @@ impl Parser {
 
     fn advance(&mut self) -> Token {
         if let Some(v) = self.current.take() {
+            assert!(self.current == None);
             return v;
         } else {
+            assert!(self.current == None);
             return self.scanner.next_token();
         }
     }
@@ -137,7 +149,9 @@ impl Parser {
     }
 
     pub fn expr(&mut self) -> Expr {
-        return self.level_5_expr();
+        let e = self.level_5_expr();
+        assert!(None == self.current);
+        return e;
     }
 
     fn level_5_expr(&mut self) -> Expr {
@@ -146,6 +160,7 @@ impl Parser {
             let conjoin = token_to_binop(self.advance());
             let rhs = self.equiv_operand();
             e = Expr::Binary(Box::new(e), conjoin, Box::new(rhs));
+            assert!(None == self.current);
         }
         return e;
     }
@@ -156,6 +171,7 @@ impl Parser {
             let conjoin = token_to_binop(self.advance());
             let rhs = self.or_operand();
             e = Expr::Binary(Box::new(e), conjoin, Box::new(rhs));
+            assert!(None == self.current);
         }
         return e;
     }
@@ -166,6 +182,7 @@ impl Parser {
             let conjoin = token_to_binop(self.advance());
             let rhs = self.and_operand();
             e = Expr::Binary(Box::new(e), conjoin, Box::new(rhs));
+            assert!(None == self.current);
         }
         return e;
     }
@@ -174,6 +191,7 @@ impl Parser {
         if self.matches(&[TokenType::Not]) {
             let rator = token_to_unary_op(self.advance());
             let rand = self.level_4_expr();
+            assert!(None == self.current);
             return Expr::Unary(rator, Box::new(rand));
         } else {
             return self.level_4_expr();
@@ -188,6 +206,7 @@ impl Parser {
             let operator = token_to_binop(self.advance());
             let rhs = self.level_3_expr();
             e = Expr::Binary(Box::new(e), operator, Box::new(rhs));
+            assert!(None == self.current);
         }
         return e;
     }
@@ -199,6 +218,7 @@ impl Parser {
             let operator = token_to_binop(self.advance());
             let rhs = self.level_2_expr();
             e = Expr::Binary(Box::new(e), operator, Box::new(rhs));
+            assert!(None == self.current);
         }
         return e;
     }
@@ -208,7 +228,9 @@ impl Parser {
         let b = self.level_1_expr();
         if self.check(TokenType::Pow) {
             self.advance();
-            return Expr::Binary(Box::new(b), BinOp::Power, Box::new(self.mult_operand()));
+            let e = self.mult_operand();
+            self.current = None;
+            return Expr::Binary(Box::new(b), BinOp::Power, Box::new(e));
         }
         return b;
     }
@@ -219,9 +241,10 @@ impl Parser {
             let binop = token_to_binop(self.advance());
             let rhs = self.mult_operand();
             e = Expr::Binary(Box::new(e), binop, Box::new(rhs));
+            assert!(None == self.current);
         }
         return e;
-    }    
+    }
 
     fn level_2_expr(&mut self) -> Expr {
         let mut e;
@@ -236,41 +259,38 @@ impl Parser {
             let operator = token_to_binop(self.advance());
             let rhs = self.add_operand();
             e = Expr::Binary(Box::new(e), operator, Box::new(rhs));
+            assert!(None == self.current);
         }
         return e;
     }
 
     fn level_1_expr(&mut self) -> Expr {
-        return self.primary();
+        let e = self.primary();
+        assert!(None == self.current);
+        return e;
     }
     
     fn primary(&mut self) -> Expr {
-        match self.peek() {
-            Some(v) => match &v.token_type {
-                TokenType::Integer(i) => {
-                    // TODO: something more sophisticated here
-                    return Expr::Int64(i.iter().collect::<String>().parse::<i64>().unwrap());
-                },
-                TokenType::Float(f) => {
-                    // TODO: try to figure out if we are working with
-                    // f32 or f128 or f256?
-                    return Expr::Float64(f.iter().collect::<String>().parse::<f64>().unwrap());
-                },
-                TokenType::String(s) => {
-                    return Expr::Character(s.to_vec());
-                },
-                TokenType::LeftParen => {
-                    self.advance();
-                    let e = self.expr();
-                    self.consume(TokenType::RightParen,
-                                 "Expected ')' after expression.");
-                    return Expr::Grouping(Box::new(e));
-                },
-                _ => {
-                    return Expr::ErrorExpr;
-                }
+        match self.advance().token_type {
+            TokenType::Integer(i) => {
+                return Expr::Int64(i.iter().collect::<String>().parse::<i64>().unwrap());
+            },
+            TokenType::Float(f) => {
+                return Expr::Float64(f.iter().collect::<String>().parse::<f64>().unwrap());
+            },
+            TokenType::String(s) => {
+                return Expr::Character(s.to_vec());
+            },
+            TokenType::LeftParen => {
+                // self.advance();
+                let e = self.expr();
+                self.consume(TokenType::RightParen,
+                             "Expected ')' after expression.");
+                return Expr::Grouping(Box::new(e));
+            },
+            _ => {
+                return Expr::ErrorExpr;
             }
-            None => return Expr::ErrorExpr,
         }
     }
 }
@@ -310,6 +330,50 @@ mod tests {
         fn parse_negative_int() {
             let val: i64 = 51;
             should_parse_expr!("-51", Expr::Unary(UnOp::Minus, Box::new(Expr::Int64(val))));
+        }
+
+        #[test]
+        fn parse_int_pow_int() {
+            let x: i64 = 3;
+            let y: i64 = 4;
+            should_parse_expr!("3 ** 4",
+                               Expr::Binary(Box::new(Expr::Int64(x)),
+                                            BinOp::Power,
+                                            Box::new(Expr::Int64(y))));
+        }
+
+        #[test]
+        fn parse_level_2_expr_subtraction() {
+            let x: i64 = 3;
+            let y: i64 = 4;
+            should_parse_expr!("3 - 4",
+                               Expr::Binary(Box::new(Expr::Int64(x)),
+                                            BinOp::Minus,
+                                            Box::new(Expr::Int64(y))));
+        }
+
+        #[test]
+        fn parse_level_2_expr_add() {
+            let x: i64 = 3;
+            let y: i64 = 4;
+            should_parse_expr!("3 + 4",
+                               Expr::Binary(Box::new(Expr::Int64(x)),
+                                            BinOp::Plus,
+                                            Box::new(Expr::Int64(y))));
+        }
+
+        #[test]
+        fn parse_iterated_powers() {
+            let x: i64 = 3;
+            let y: i64 = 4;
+            let z: i64 = 5;
+            should_parse_expr!("3 ** 4 ** 5",
+                               Expr::Binary(Box::new(Expr::Int64(x)),
+                                            BinOp::Power,
+                                            Box::new(
+                                                Expr::Binary(Box::new(Expr::Int64(y)),
+                                                             BinOp::Power,
+                                                             Box::new(Expr::Int64(z))))));
         }
     }
 
