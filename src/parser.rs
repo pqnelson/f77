@@ -196,7 +196,6 @@ impl Parser {
             let conjoin = token_to_binop(self.advance());
             let rhs = self.equiv_operand();
             e = Expr::Binary(Box::new(e), conjoin, Box::new(rhs));
-            assert!(None == self.current);
         }
         return e;
     }
@@ -210,7 +209,6 @@ impl Parser {
             let conjoin = token_to_binop(self.advance());
             let rhs = self.or_operand();
             e = Expr::Binary(Box::new(e), conjoin, Box::new(rhs));
-            assert!(None == self.current);
         }
         return e;
     }
@@ -224,7 +222,6 @@ impl Parser {
             let conjoin = token_to_binop(self.advance());
             let rhs = self.and_operand();
             e = Expr::Binary(Box::new(e), conjoin, Box::new(rhs));
-            assert!(None == self.current);
         }
         return e;
     }
@@ -236,7 +233,6 @@ impl Parser {
         if self.matches(&[TokenType::Not]) {
             let rator = token_to_unary_op(self.advance());
             let rand = self.level_4_expr();
-            assert!(None == self.current);
             return Expr::Unary(rator, Box::new(rand));
         } else {
             return self.level_4_expr();
@@ -256,7 +252,6 @@ impl Parser {
             let operator = token_to_binop(self.advance());
             let rhs = self.level_3_expr();
             e = Expr::Binary(Box::new(e), operator, Box::new(rhs));
-            assert!(None == self.current);
         }
         return e;
     }
@@ -271,7 +266,6 @@ impl Parser {
             let operator = token_to_binop(self.advance());
             let rhs = self.level_2_expr();
             e = Expr::Binary(Box::new(e), operator, Box::new(rhs));
-            assert!(None == self.current);
         }
         return e;
     }
@@ -303,7 +297,6 @@ impl Parser {
             let binop = token_to_binop(self.advance());
             let rhs = self.mult_operand();
             e = Expr::Binary(Box::new(e), binop, Box::new(rhs));
-            assert!(None == self.current);
         }
         return e;
     }
@@ -326,7 +319,6 @@ impl Parser {
             let operator = token_to_binop(self.advance());
             let rhs = self.add_operand();
             e = Expr::Binary(Box::new(e), operator, Box::new(rhs));
-            assert!(None == self.current);
         }
         return e;
     }
@@ -451,6 +443,35 @@ mod tests {
                                                              BinOp::Power,
                                                              Box::new(Expr::Int64(z))))));
         }
+
+        #[test]
+        fn subtraction_is_left_associative() {
+            let x: i64 = 3;
+            let y: i64 = 4;
+            let z: i64 = 5;
+            should_parse_expr!("3 - 4 - 5",
+                               Expr::Binary(Box::new(
+                                                Expr::Binary(Box::new(Expr::Int64(x)),
+                                                             BinOp::Minus,
+                                                             Box::new(Expr::Int64(y)))),
+                                            BinOp::Minus,
+                                            Box::new(Expr::Int64(z))));
+        }
+
+        #[test]
+        fn division_is_left_associative() {
+            let x: i64 = 3;
+            let y: i64 = 4;
+            let z: i64 = 5;
+            should_parse_expr!("3 / 4 / 5",
+                               Expr::Binary(Box::new(
+                                                Expr::Binary(Box::new(Expr::Int64(x)),
+                                                             BinOp::Divide,
+                                                             Box::new(Expr::Int64(y)))),
+                                            BinOp::Divide,
+                                            Box::new(Expr::Int64(z))));
+        }
+
     }
 
 }
