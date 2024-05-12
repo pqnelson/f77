@@ -133,6 +133,7 @@ pub enum StatementType {
     Continue,
     Goto(i32),
     Write(Vec<Expr>),
+    Read(Vec<Expr>),
     Illegal // should never be reached
 }
 
@@ -267,6 +268,43 @@ impl Parser {
     /* *****************************************************************
     Statements
      ********************************************************** */
+
+    fn io_list(&mut self) -> Vec<Expr> {
+        let mut args = Vec::<Expr>::with_capacity(32);
+        args.push(self.expr());
+        while self.matches(&[TokenType::Comma]) {
+            self.advance(); // consume the comma
+            args.push(self.expr());
+        }
+        args.shrink_to_fit();
+        return args;
+    }
+    
+    /*
+    read-statement = "read (*,*)" io-list
+    */
+    fn read(&mut self, label: Option<i32>) -> Statement {
+        assert!(TokenType::Read == self.advance().token_type);
+        
+        self.consume(TokenType::LeftParen,
+                     "Expected left paren in READ statement's UNIT");
+        self.consume(TokenType::Star,
+                     "Expected dummy arg in READ statement's UNIT");
+        self.consume(TokenType::Comma,
+                     "Expected comma in READ statement's UNIT");
+        self.consume(TokenType::Star,
+                     "Expected dummy arg in READ statement's UNIT");
+        self.consume(TokenType::RightParen,
+                     "Expected right paren in READ statement's UNIT");
+        return Statement {
+            label: label,
+            sort: StatementType::Read(self.io_list()),
+        };
+    }
+    
+    /*
+    write-statement = "write (*,*)" io-list
+    */
     fn write(&mut self, label: Option<i32>) -> Statement {
         assert!(TokenType::Write == self.advance().token_type);
         self.consume(TokenType::LeftParen,
@@ -279,16 +317,9 @@ impl Parser {
                      "Expected dummy arg in WRITE statement's UNIT");
         self.consume(TokenType::RightParen,
                      "Expected right paren in WRITE statement's UNIT");
-        let mut args = Vec::<Expr>::with_capacity(32);
-        args.push(self.expr());
-        while self.matches(&[TokenType::Comma]) {
-            self.advance(); // consume the comma
-            args.push(self.expr());
-        }
-        args.shrink_to_fit();
         return Statement {
             label: label,
-            sort: StatementType::Write(args),
+            sort: StatementType::Write(self.io_list()),
         };
     }
     
@@ -361,6 +392,7 @@ impl Parser {
                 TokenType::Goto => return self.goto_statement(label),
                 TokenType::Continue => return self.continue_statement(label),
                 TokenType::Write => return self.write(label),
+                TokenType::Read => return self.read(label),
                 _ => {
                     eprintln!("Parser::statement() illegal statement starting line {} with Token: #{:?}",
                               self.scanner.line_number(),
@@ -373,6 +405,10 @@ impl Parser {
             return self.illegal_statement(None);
         }
     }
+    
+    /* *****************************************************************
+    Expressions
+     ********************************************************** */
 
     pub fn expr(&mut self) -> Expr {
         let e = self.level_5_expr();
@@ -732,6 +768,34 @@ mod tests {
                 sort: StatementType::Write(args),
             };
             should_parse_stmt!(" 10   WRITE (*,*) X, Y,Z",
+                               expected);
+        }
+        
+        #[test]
+        fn labeled_read_one_variable() {
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("X")));
+            args.shrink_to_fit();
+            let expected = Statement {
+                label: Some(10 as i32),
+                sort: StatementType::Read(args),
+            };
+            should_parse_stmt!(" 10   READ (*,*) X",
+                               expected);
+        }
+
+        #[test]
+        fn labeled_read_three_variable() {
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("X")));
+            args.push(Expr::Variable(String::from("Y")));
+            args.push(Expr::Variable(String::from("Z")));
+            args.shrink_to_fit();
+            let expected = Statement {
+                label: Some(10 as i32),
+                sort: StatementType::Read(args),
+            };
+            should_parse_stmt!(" 10   READ (*,*) X, Y,Z",
                                expected);
         }
 
