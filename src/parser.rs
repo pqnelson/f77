@@ -106,6 +106,7 @@ pub enum Expr {
     Int32(i32),
     Int64(i64),
     Logical(bool),
+    Variable(String),
     // composite expressions
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),
@@ -333,13 +334,33 @@ impl Parser {
     }
 
     /*
+    named_data_ref = identifier
+                   | function_call
+                   | array_slice_or_element
+     */
+    fn named_data_ref(&mut self, identifier: Token) -> Expr {
+        if let TokenType::Identifier(v) = identifier.token_type {
+            if !self.matches(&[TokenType::LeftParen]) {
+                // it's a variable, end it here.
+                return Expr::Variable(v.into_iter().collect());
+            }
+            // it's an array, or a function reference, or an array slice
+        } else {
+            panic!("This should never be reached! Expected an identifier, received {}", identifier);
+        }
+        return Expr::ErrorExpr;
+    }
+
+    /*
     primary ::= int_constant
              |  real_constant
              |  string_constant
+             |  named_data_ref
              |  "(" expr ")"
      */
     fn primary(&mut self) -> Expr {
-        match self.advance().token_type {
+        let token = self.advance();
+        match token.token_type {
             TokenType::Integer(i) => {
                 return Expr::Int64(i.iter().collect::<String>().parse::<i64>().unwrap());
             },
@@ -349,8 +370,10 @@ impl Parser {
             TokenType::String(s) => {
                 return Expr::Character(s.to_vec());
             },
+            TokenType::Identifier(_) => {
+                return self.named_data_ref(token);
+            },
             TokenType::LeftParen => {
-                // self.advance();
                 let e = self.expr();
                 self.consume(TokenType::RightParen,
                              "Expected ')' after expression.");
@@ -380,6 +403,23 @@ mod tests {
                 let actual = parser.expr();
                 assert_eq!($expected, actual);
             }
+        }
+
+        #[test]
+        fn parse_polysyllabic_variable() {
+            should_parse_expr!("humidity",
+                               Expr::Variable(String::from("humidity")));
+        }
+
+        #[test]
+        fn parse_variable() {
+            should_parse_expr!("x", Expr::Variable(String::from("x")));
+        }
+
+        #[test]
+        fn parse_variable_with_numeric_suffix() {
+            should_parse_expr!("alpha13",
+                               Expr::Variable(String::from("alpha13")));
         }
 
         #[test]
