@@ -394,9 +394,14 @@ impl Parser {
         if let Some(token) = self.peek() {
             match &token.token_type {
                 TokenType::Label(v) => {
-                    let label = Some(v.iter().collect::<String>().parse::<i32>().unwrap());
+                    let value = v.iter().collect::<String>().parse::<i32>().unwrap();
                     self.advance();
-                    return label;
+                    if 0 == value {
+                        return None;
+                    } else {
+                        let label = Some(value);
+                        return label;
+                    }
                 },
                 _ => return None,
             };
@@ -825,6 +830,26 @@ mod tests {
                 sort: StatementType::Read(args),
             };
             should_parse_stmt!(" 10   READ (*,*) X, Y,Z",
+                               expected);
+        }
+
+        #[test]
+        fn zero_label_continue_is_unlabeled() {
+            let expected = Statement {
+                label: None,
+                sort: StatementType::Continue
+            };
+            should_parse_stmt!(" 0    continue",
+                               expected);
+        }
+
+        #[test]
+        fn labeled_continue_with_leading_zeros() {
+            let expected = Statement {
+                label: Some(10 as i32),
+                sort: StatementType::Continue
+            };
+            should_parse_stmt!(" 010  continue",
                                expected);
         }
 
