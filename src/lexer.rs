@@ -383,11 +383,7 @@ impl Lexer {
     fn read_identifier(&mut self) -> Vec<char> {
         assert!(is_id_start(self.ch));
         let position = self.position;
-        // gobble the period
-        if self.read_position < self.input.len() {
-            self.read_char();
-        }
-        while self.read_position < self.input.len() && is_identifier(self.peek()) {
+        while !self.is_finished() && is_identifier(self.peek()) {
             self.read_char();
         }
         if '.' == self.input[position] && '.' == self.input[self.read_position] {
@@ -756,6 +752,11 @@ mod tests {
                 assert_eq!(token, $expected);
             }
         };
+    }
+
+    #[test]
+    fn lex_fn_name() {
+        should_lex!("f()", TokenType::Identifier("f".chars().collect()));
     }
 
     #[test]

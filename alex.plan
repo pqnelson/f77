@@ -1,4 +1,39 @@
 <!--- -*- mode: Markdown; var: -*- -->
+# 2024-05-12T09:20:58-0700
+
+I caught a bug with `Parser::consume()` which was silly. I also caught a
+bug with scanning an identifier, thanks to trying to parse function
+names --- `f()` was scanned as `Identifier::("f(")` followed by `RightParen`.
+It's good that I am unit testing as I go along, otherwise I would never
+catch these bugs!
+
+So far I have supported variables and "simple" function calls (i.e.,
+function calls requiring no arguments). The next task is
+arrays. This...well, it's going to be a horrible mess.
+
+# 2024-05-12T08:35:56-0700
+
+After adding support for variables, I looked around and found Frank
+Lhota wrote a
+[Flex/Bison parser](https://github.com/FrankLhota56/fortran66-flex/) 
+for FORTRAN 66. It's interesting to see what 
+the grammar looks like. It appears much simpler in some regards. Well,
+the [FORTRAN 66 Standard](https://wg5-fortran.org/ARCHIVE/Fortran66.pdf)
+is merely 39 pages (compared to the 223 pages for FORTRAN 77) and arrays
+were limited to be of rank no greater than 3. Array slices were not a
+"thing" in FORTRAN 66.
+
+In FORTRAN 77, array slices weren't really part of the Standard
+either. But substrings were specified using colons (e.g., `NAME(3:17)`).
+
+So now I have a decision to make, I can:
+
+1. Adhere to the FORTRAN 77 Standard and only support array slices for
+   strings, or
+2. Support Fortran 90 array slices in general.
+
+It seems that the second choice is more general and easier to implement. 
+
 # 2024-05-12T07:21:58-0700
 
 I am planning to work out a few more unit tests, to make sure that the
@@ -83,6 +118,9 @@ However, in Section 6.2.2 of the 90 Standard, it allows array sections
 Standard):
 
 ```ebnf
+(* R611 *)
+substring-range = [scalar-int-expr] ":" [scalar-int-expr] ;
+
 (* R612 *)
 data-ref = part-ref { "%" part-ref };
 
@@ -141,6 +179,9 @@ Since there are no structures in F77, this simplifies to the following
 grammar:
 
 ```ebnf
+(* R611 *)
+substring-range = [scalar-int-expr] ":" [scalar-int-expr] ;
+
 (* R612 through R614, contracted *)
 data-ref = part-name [ "(" section-subscript-list ")" ];
 

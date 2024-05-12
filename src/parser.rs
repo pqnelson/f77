@@ -9,11 +9,25 @@ use crate::lexer::{
 Current plans:
 1. "Named data references" expression
 2. Fix line number problems
+  - When advancing through the tokens, we should skip over continuation
+    tokens when parsing an expression or a statement. 
+  - If we want to adhere to the "letter of the law", we should track how
+    many lines the current statement has, since the 77 Standard says that
+    a statement consists "of an initial line and as many as nineteen
+    continuation lines." This could be flagged with a warning, or we
+    could enter panic mode.
+  - The Fortran 90 Standard explicitly says:
+    "A fixed form statement must not have more than 19 continuation lines."
+    (3.3.2.4) The free-form Fortran 90 is more generous, a free form
+    statement must not have more than 39 continuation lines (3.3.1.4).
+    Again, how to handle this? Issue a warning? Panic? 
 3. Statements
   - Simple statements (assignment?)
   - If-then-else statements
   - Labels and goto statements
   - do-loops
+  - We should also note that the 77 Standard says, "a statement must
+    contain no more than 1320 characters." (3.3)
 4. Program Units
 
 I found it useful to write the grammar rules as comments before each
@@ -111,7 +125,7 @@ pub enum Expr {
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),
     Grouping(Box<Expr>),
-    
+    FunCall(String, Vec<Expr>),
     // placeholder, should never be forced to arrive here
     ErrorExpr,
 }
@@ -169,21 +183,22 @@ impl Parser {
 
     fn check(&mut self, token_type: TokenType) -> bool {
         match self.peek() {
-            None => return false,
             Some(v) => return v.token_type == token_type,
+            None => return false,
         }
     }
 
     fn consume(&mut self, expected: TokenType, msg: &str) {
         if self.check(expected) {
             self.advance();
+            return;
+        } else {
+            panic!("{}", msg);
         }
-        panic!("{}", msg);
     }
 
     pub fn expr(&mut self) -> Expr {
         let e = self.level_5_expr();
-        assert!(None == self.current);
         return e;
     }
 
@@ -329,7 +344,6 @@ impl Parser {
      */
     fn level_1_expr(&mut self) -> Expr {
         let e = self.primary();
-        assert!(None == self.current);
         return e;
     }
 
@@ -341,8 +355,15 @@ impl Parser {
     fn named_data_ref(&mut self, identifier: Token) -> Expr {
         if let TokenType::Identifier(v) = identifier.token_type {
             if !self.matches(&[TokenType::LeftParen]) {
-                // it's a variable, end it here.
+                /* Note: into_iter moves the characters from the token
+                   into the expression */
                 return Expr::Variable(v.into_iter().collect());
+            }
+            self.consume(TokenType::LeftParen, "Expected '(' in array access or function call");
+            if self.matches(&[TokenType::RightParen]) {
+                self.advance();
+                return Expr::FunCall(v.into_iter().collect(),
+                                     Vec::new());
             }
             // it's an array, or a function reference, or an array slice
         } else {
@@ -405,6 +426,13 @@ mod tests {
             }
         }
 
+        #[test]
+        fn parse_simple_fn_call() {
+            should_parse_expr!("f()",
+                               Expr::FunCall(String::from("f"),
+                                             Vec::new()));
+        }
+        
         #[test]
         fn parse_polysyllabic_variable() {
             should_parse_expr!("humidity",
