@@ -132,10 +132,12 @@ statement = [label] "continue"
 pub enum StatementType {
     Continue,
     Goto(i32),
+    Write(Vec<Expr>),
     Illegal // should never be reached
 }
 
 // 6 digit label <= (10^6) - 1 < 20^19
+#[derive(PartialEq, Debug)]
 pub struct Statement {
     label: Option<i32>,
     sort: StatementType,
@@ -264,10 +266,34 @@ impl Parser {
 
     /* *****************************************************************
     Statements
-    ********************************************************** */
+     ********************************************************** */
+    fn write(&mut self, label: Option<i32>) -> Statement {
+        assert!(TokenType::Write == self.advance().token_type);
+        self.consume(TokenType::LeftParen,
+                     "Expected left paren in WRITE statement's UNIT");
+        self.consume(TokenType::Star,
+                     "Expected dummy arg in WRITE statement's UNIT");
+        self.consume(TokenType::Comma,
+                     "Expected comma in WRITE statement's UNIT");
+        self.consume(TokenType::Star,
+                     "Expected dummy arg in WRITE statement's UNIT");
+        self.consume(TokenType::RightParen,
+                     "Expected right paren in WRITE statement's UNIT");
+        let mut args = Vec::<Expr>::with_capacity(32);
+        args.push(self.expr());
+        while self.matches(&[TokenType::Comma]) {
+            self.advance(); // consume the comma
+            args.push(self.expr());
+        }
+        args.shrink_to_fit();
+        return Statement {
+            label: label,
+            sort: StatementType::Write(args),
+        };
+    }
+    
     fn goto_statement(&mut self, label: Option<i32>) -> Statement {
         assert!(TokenType::Goto == self.advance().token_type);
-        let e = self.expr();
         let target: i32;
         let t = self.next_token();
         match t.token_type {
@@ -327,12 +353,14 @@ impl Parser {
     }
     
     pub fn statement(&mut self) -> Statement {
+        self.reset_continuation_count();
         let label: Option<i32> = self.statement_label();
         // assert!(!self.peek().token_type.is_label());
         if let Some(token) = self.peek() {
             match token.token_type {
-                TokenType::Goto => return self.illegal_statement(label), //return self.goto_statement(label),
+                TokenType::Goto => return self.goto_statement(label),
                 TokenType::Continue => return self.continue_statement(label),
+                TokenType::Write => return self.write(label),
                 _ => {
                     eprintln!("Parser::statement() illegal statement starting line {} with Token: #{:?}",
                               self.scanner.line_number(),
@@ -667,6 +695,88 @@ named_data_ref = identifier
 mod tests {
     use super::*;
 
+    mod stmt {
+        use super::*;
+        #[macro_export]
+        macro_rules! should_parse_stmt {
+            ( $text:expr, $expected:expr ) => {
+                let l = Lexer::new($text.chars().collect());
+                let mut parser = Parser::new(l);
+                let actual = parser.statement();
+                assert_eq!($expected, actual);
+            }
+        }
+
+        #[test]
+        fn labeled_write_one_variable() {
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("X")));
+            args.shrink_to_fit();
+            let expected = Statement {
+                label: Some(10 as i32),
+                sort: StatementType::Write(args),
+            };
+            should_parse_stmt!(" 10   WRITE (*,*) X",
+                               expected);
+        }
+
+        #[test]
+        fn labeled_write_three_variable() {
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("X")));
+            args.push(Expr::Variable(String::from("Y")));
+            args.push(Expr::Variable(String::from("Z")));
+            args.shrink_to_fit();
+            let expected = Statement {
+                label: Some(10 as i32),
+                sort: StatementType::Write(args),
+            };
+            should_parse_stmt!(" 10   WRITE (*,*) X, Y,Z",
+                               expected);
+        }
+
+        #[test]
+        fn labeled_continue() {
+            let expected = Statement {
+                label: Some(10 as i32),
+                sort: StatementType::Continue
+            };
+            should_parse_stmt!(" 10   continue",
+                               expected);
+        }
+
+        #[test]
+        fn unlabeled_continue() {
+            let expected = Statement {
+                label: None,
+                sort: StatementType::Continue
+            };
+            should_parse_stmt!("      continue",
+                               expected);
+        }
+
+        #[test]
+        fn labeled_goto() {
+            let expected = Statement {
+                label: Some(100 as i32),
+                sort: StatementType::Goto(325)
+            };
+            should_parse_stmt!(" 100  goto 325",
+                               expected);
+        }
+
+        #[test]
+        fn unlabeled_goto() {
+            let expected = Statement {
+                label: None,
+                sort: StatementType::Goto(321)
+            };
+            should_parse_stmt!("      goto 321",
+                               expected);
+        }
+
+    }
+    
     mod expr {
         use super::*;
         
