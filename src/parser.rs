@@ -571,6 +571,18 @@ mod tests {
                                Expr::ArraySection(String::from("A"),
                                                   args));
         }
+
+        #[test]
+        fn f90_array_section_ex3() {
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Section((None,None,None)));
+            args.push(Expr::Section((None,None,None)));
+            args.push(Expr::Section((None,None,None)));
+            args.shrink_to_fit();
+            should_parse_expr!("B(:,:,:)",
+                               Expr::ArraySection(String::from("B"),
+                                                  args));
+        }
         
         #[test]
         fn parse_array_section_with_only_start_and_stride() {
