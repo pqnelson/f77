@@ -189,7 +189,7 @@ fn get_keyword_token(ident: &Vec<char>) -> Result<TokenType, String> {
         ".eq." => Ok(TokenType::Eq),
         ".ne." => Ok(TokenType::NotEqual),
         ".gt." => Ok(TokenType::Greater),
-        ".geq." => Ok(TokenType::Geq),
+        ".ge." => Ok(TokenType::Geq),
         ".not." => Ok(TokenType::Not),
         ".and." => Ok(TokenType::And),
         ".or." => Ok(TokenType::Or),
@@ -876,7 +876,7 @@ mod tests {
 
     #[test]
     fn lex_geq() {
-        should_lex!(".GEQ.", TokenType::Geq);
+        should_lex!(".GE.", TokenType::Geq);
     }
     
     #[test]
