@@ -30,6 +30,7 @@ pub enum TokenType {
     Star,
     Pow, // "**"
     Equal,
+    Colon, 
 
     Continuation(char),
     
@@ -67,6 +68,7 @@ impl fmt::Display for TokenType {
             TokenType::LeftParen => return write!(f, "("),
             TokenType::RightParen => return write!(f, ")"),
             TokenType::Comma => return write!(f, ","),
+            TokenType::Colon => return write!(f, ":"),
             TokenType::Minus => return write!(f, "-"),
             TokenType::Plus => return write!(f, "+"),
             TokenType::Slash => return write!(f, "/"),
@@ -449,6 +451,9 @@ impl Lexer {
         match self.ch {
             '=' => {
                 tok = TokenType::Equal;
+            },
+            ':' => {
+                tok = TokenType::Colon;
             },
             '+' => {
                 tok = TokenType::Plus;

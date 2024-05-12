@@ -1,4 +1,47 @@
 <!--- -*- mode: Markdown; var: -*- -->
+# 2024-05-12T09:35:00-0700
+
+It dawns on me that I am going to need to parse `write (*,*) <iolist>`
+and `read (*,*) <iolist>` specially. Fortunately I have `Read` and
+`Write` as special tokens.
+
+And Fortran has some peculiar quirks concerning dummy arguments (which
+are `*` passed as function arguments).
+
+```ebnf
+array-or-funcall = funcall | array-element-or-slice;
+
+funcall = identifier "(" ")"
+        | identifier "(" expr {, expr} ")" ;
+
+(* R612 and R613 *)
+data-ref = identifier
+         | identifier "(" section-subscript {"," section-subscript} ")" ;
+
+(* R615 *)
+array-element = data-ref;
+
+(* R616 *)
+array-section = data-ref
+              | data-ref "(" [scalar-int-expr] ":" [scalar-int-expr] ")";
+
+subscript = int-scalar-expr; (* R617 *)
+
+(* R618 *)
+section-subscript = subscript
+                   | subscript-triplet
+                   | vector-subscript;
+subscript-triplet = [subscript] ":" [subscript] [":" stride]; (* R619 *)
+stride = scalar-int-expr; (* R620 *)
+```
+
+Some examples:
+- `A(x)` is an array element
+- `A(1, 2)` is an array element
+- `A(1:N:2, M)` is a rank-one array section
+- `B(:,:,:)` is an array section when `B` is an array of rank-3
+- `A(3:5,2,1:2)` is an array section with shape `(3,2)`
+
 # 2024-05-12T09:20:58-0700
 
 I caught a bug with `Parser::consume()` which was silly. I also caught a

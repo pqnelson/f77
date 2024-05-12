@@ -121,11 +121,18 @@ pub enum Expr {
     Int64(i64),
     Logical(bool),
     Variable(String),
+    // TODO: consider adding a Subscript(Box<Expr>) to remind myself
+    //       of a lingering burden to check during typechecking?
+    // array slice section: start, stop, stride
+    Section((Option<Box<Expr>>, Option<Box<Expr>>, Option<Box<Expr>>)),
     // composite expressions
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),
     Grouping(Box<Expr>),
+    NamedDataRef(String, Vec<Expr>), // function call or array element or array section?
     FunCall(String, Vec<Expr>),
+    ArrayElement(String, Vec<Expr>), // e.g., "MYARRAY(3,65,2)"
+    ArraySection(String, Vec<Expr>), // e.g., "MYARRAY(3:65)"
     // placeholder, should never be forced to arrive here
     ErrorExpr,
 }
@@ -348,9 +355,80 @@ impl Parser {
     }
 
     /*
-    named_data_ref = identifier
-                   | function_call
-                   | array_slice_or_element
+    subscript ::= int_scalar_expr
+     */
+    fn subscript(&mut self) -> Expr {
+        // TODO: check that it's really an integer scalar quantity
+        return self.expr();
+    }
+    /*
+    section_triplet_tail = ":" [expr] [":" expr]
+    --- equivalently ---
+    section_triplet_tail = ":"
+                         | ":" expr
+                         | ":" ":" expr
+                         | ":" expr ":" expr
+     */
+    fn section_triplet_tail(&mut self) -> Option<(Option<Box<Expr>>,Option<Box<Expr>>)> {
+        if !self.matches(&[TokenType::Colon]) {
+            return None;
+        }
+        self.advance(); // eat the colon
+        let stop;
+        let stride;
+        if self.matches(&[TokenType::Comma,
+                          TokenType::RightParen]) {
+            // matches `":"`
+            stop = None;
+            stride = None;
+        } else if self.matches(&[TokenType::Colon]) {
+            // matches `":" ":" expr`
+            self.advance();
+            stop = None;
+            stride = Some(Box::new(self.subscript()));
+        } else {
+            // matches `expr [":" expr]`
+            stop = Some(Box::new(self.subscript()));
+            if self.matches(&[TokenType::Colon]) {
+                self.advance();
+                stride = Some(Box::new(self.subscript()));
+            } else {
+                stride = None;
+            }
+        }
+        return Some((stop, stride));
+    }
+    
+    /*
+    section_subscript ::= subscript
+                       |  [subscript] section_triplet_tail
+     */
+    fn section_subscript(&mut self) -> Expr {
+        // if [subscript] is omitted
+        if self.matches(&[TokenType::Colon]) {
+            if let Some((stop, stride)) = self.section_triplet_tail() {
+                // ":stop[:stride]" matched
+                return Expr::Section((None, stop, stride));
+            } else {
+                // ":" matched
+                return Expr::Section((None, None, None));
+            }
+        } else { // section_subscript = subscript + stuff
+            let e = self.subscript();
+            if let Some((stop, stride)) = self.section_triplet_tail() {
+                // "e:stop[:stride]" matched
+                return Expr::Section((Some(Box::new(e)), stop, stride));
+            } else {
+                // subscript matched
+                return e;
+            }
+        }
+    }
+    
+    /*
+named_data_ref = identifier
+               | function_call
+               | identifier "(" section_subscript {"," section_subscript} ")"
      */
     fn named_data_ref(&mut self, identifier: Token) -> Expr {
         if let TokenType::Identifier(v) = identifier.token_type {
@@ -365,7 +443,32 @@ impl Parser {
                 return Expr::FunCall(v.into_iter().collect(),
                                      Vec::new());
             }
+            let mut args = Vec::<Expr>::with_capacity(64);
+            let mut is_array_section = false;
+            /* parses section_subscript {"," section_subscript} */
+            loop {
+                let e = self.section_subscript();
+                if !is_array_section {
+                    match e {
+                        Expr::Section(_) => is_array_section = true,
+                        _ => {}
+                    }
+                }
+                args.push(e);
+                if self.matches(&[TokenType::Comma]) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            args.shrink_to_fit();
+            if is_array_section {
+                return Expr::ArraySection(v.into_iter().collect(), args);
+            } else {
+                return Expr::NamedDataRef(v.into_iter().collect(), args);
+            }
             // it's an array, or a function reference, or an array slice
+            // we do not know until we get more information
         } else {
             panic!("This should never be reached! Expected an identifier, received {}", identifier);
         }
@@ -424,6 +527,122 @@ mod tests {
                 let actual = parser.expr();
                 assert_eq!($expected, actual);
             }
+        }
+
+        #[test]
+        fn parse_array_section() {
+            let start = Expr::Int64(1);
+            let stop = Expr::Int64(3);
+            let sec = Expr::Section((Some(Box::new(start)),
+                                     Some(Box::new(stop)),
+                                     None));
+            let mut args = Vec::<Expr>::new();
+            args.push(sec);
+            args.shrink_to_fit();
+            should_parse_expr!("A(1:3)",
+                               Expr::ArraySection(String::from("A"),
+                                                  args));
+        }
+
+        #[test]
+        fn parse_array_section_without_start() {
+            let stop = Expr::Int64(3);
+            let sec = Expr::Section((None,
+                                     Some(Box::new(stop)),
+                                     None));
+            let mut args = Vec::<Expr>::new();
+            args.push(sec);
+            args.shrink_to_fit();
+            should_parse_expr!("A(:3)",
+                               Expr::ArraySection(String::from("A"),
+                                                  args));
+        }
+
+        #[test]
+        fn parse_array_section_without_stop() {
+            let start = Expr::Int64(3);
+            let sec = Expr::Section((Some(Box::new(start)),
+                                     None,
+                                     None));
+            let mut args = Vec::<Expr>::new();
+            args.push(sec);
+            args.shrink_to_fit();
+            should_parse_expr!("A(3:)",
+                               Expr::ArraySection(String::from("A"),
+                                                  args));
+        }
+        
+        #[test]
+        fn parse_array_section_with_only_start_and_stride() {
+            let start = Expr::Int64(7);
+            let stride = Expr::Int64(4);
+            let sec = Expr::Section((Some(Box::new(start)),
+                                     None,
+                                     Some(Box::new(stride))));
+            let mut args = Vec::<Expr>::new();
+            args.push(sec);
+            args.shrink_to_fit();
+            should_parse_expr!("A(7::4)",
+                               Expr::ArraySection(String::from("A"),
+                                                  args));
+        }
+        
+        #[test]
+        fn parse_array_section_with_start_and_stop_and_stride() {
+            let start = Expr::Int64(7);
+            let stop = Expr::Int64(36);
+            let stride = Expr::Int64(4);
+            let sec = Expr::Section((Some(Box::new(start)),
+                                     Some(Box::new(stop)),
+                                     Some(Box::new(stride))));
+            let mut args = Vec::<Expr>::new();
+            args.push(sec);
+            args.shrink_to_fit();
+            should_parse_expr!("A(7:36:4)",
+                               Expr::ArraySection(String::from("A"),
+                                                  args));
+        }
+        
+        #[test]
+        fn parse_array_section_with_only_stop_and_stride() {
+            let stop = Expr::Int64(36);
+            let stride = Expr::Int64(4);
+            let sec = Expr::Section((None,
+                                     Some(Box::new(stop)),
+                                     Some(Box::new(stride))));
+            let mut args = Vec::<Expr>::new();
+            args.push(sec);
+            args.shrink_to_fit();
+            should_parse_expr!("A(:36:4)",
+                               Expr::ArraySection(String::from("A"),
+                                                  args));
+        }
+        
+        #[test]
+        fn parse_array_section_with_only_stride() {
+            let stride = Expr::Int64(4);
+            let sec = Expr::Section((None,
+                                     None,
+                                     Some(Box::new(stride))));
+            let mut args = Vec::<Expr>::new();
+            args.push(sec);
+            args.shrink_to_fit();
+            should_parse_expr!("A(::4)",
+                               Expr::ArraySection(String::from("A"),
+                                                  args));
+        }
+        
+        #[test]
+        fn parse_fn_with_args() {
+            let arg1 = Expr::Int64(1);
+            let arg2 = Expr::Int64(3);
+            let mut args = Vec::<Expr>::new();
+            args.push(arg1);
+            args.push(arg2);
+            args.shrink_to_fit();
+            should_parse_expr!("AREA(1, 3)",
+                               Expr::NamedDataRef(String::from("AREA"),
+                                                  args));
         }
 
         #[test]
