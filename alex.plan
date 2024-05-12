@@ -1,0 +1,114 @@
+<!--- -*- mode: Markdown; var: -*- -->
+# 2024-05-12T07:21:58-0700
+
+I am planning to work out a few more unit tests, to make sure that the
+parser is parsing expressions as intended.
+
+I have added the grammar rules for expressions as comments, to remind
+myself of what each function is supposed to do.
+
+My current plan:
+- [ ] Unit test more expressions
+- [ ] Parse named data references
+
+## Named Data References
+
+This term seems to be used in the Fortran 90 grammars. Broadly, it
+refers to:
+
+- variables
+- function calls
+- array elements
+
+The FORTRAN 77 Standard 6.1.2.1 defines a primary expression as
+consisting of:
+
+> 1. Unsigned arithmetic constant (4.2.3)
+> 2. Symbolic name of an arithmetic constant (8.6)
+> 3. Arithmetic variable reference (2.5)
+> 4. Arithmetic array element reference (5.3)
+> 5. Arithmetic function reference (15.2)
+> 6. Arithmetic expression  enclosed  in  parentheses (6.1.2.4)
+
+This is the archaic terminology for:
+
+1. number literals
+2. `parameter` constants
+3. variables
+4. array element name
+5. function call
+6. literally the `"(" expression ")"` rule
+
+We have handled cases 1 and 6. "Named data references" must therefore
+include cases 2 through 5.
+
+### Variables
+
+A variable is simply an identifier which is not followed by a left
+parentheses (otherwise it would either be a function call or an array
+element). 
+
+### Function Calls
+
+From the Fortran 90 grammars I have seen, usually the rule for a
+function call is simply:
+
+```enbf
+function-reference = name "(" ")";
+```
+
+That is to say, it is a function invocation with zero parameters. This
+is because we **know** it cannot possibly be an array element.
+
+Function calls with arguments passed in, well, they're parsed using the
+same rules as array element names, and then later determined to be
+function calls or not. At least, that's the way it appears to me.
+
+### Array Element Name
+
+The grammar for an array element name looks like the following EBNF
+grammar (according to sections 5.3 and 5.4 of the 77 Standard):
+
+```ebnf
+array-element-name = identifier "(" subscript-expr-list ")";
+
+subscript-expr-list = subscript-expr {"," subscript-expr };
+
+subscript-expr = int-literal
+               | identifer;
+```
+
+However, in Section 6.2.2 of the 90 Standard, it allows array sections
+(which is a cleaner way to organize the same results in the 77
+Standard):
+
+```ebnf
+(* R616 *)
+array-section = data-ref [ "(" substring-range ")" ] ;
+(* Constraint: in an array-element, every part-ref must have rank zero
+               and the last part-ref must contain a subscript-list. *)
+
+(* R617 *)
+subscript = scalar-int-expr ;
+(* Constraint: In array-section, exactly one part-ref must have nonzero rank,
+               and either the final part-ref has a section-subscript-list
+               with nonzero rank or another part-ref has a nonzero rank. *)
+(* Constraint: In an array-section with a substring-range, the rightmost
+               part-name must be of type character. *)
+
+(* R618 *)
+section-subscript = subscript
+                  | subscript-triplet
+                  | vector-subscript ;
+
+(* R619 *)
+subscript-triplet = [subscript] ":" [subscript] [":" stride] ;
+
+(* R620 *)
+stride = scalar-int-expr ;
+
+(* R621 *)
+vector-subscript = int-expr ;
+(* Constraint: vector-subscript must be  an integer array expression of
+               rank 1 *)
+```

@@ -8,12 +8,22 @@ use crate::lexer::{
 /*
 Current plans:
 1. "Named data references" expression
-2. Simple statements (assignment?)
-3. If-then-else statements
-4. Labels and goto statements
-5. do-loops
-6. Program Units
-*/
+2. Fix line number problems
+3. Statements
+  - Simple statements (assignment?)
+  - If-then-else statements
+  - Labels and goto statements
+  - do-loops
+4. Program Units
+
+I found it useful to write the grammar rules as comments before each
+function. This is a simple recursive descent parser, so production rules
+correspond to function names.
+
+Also, it may be useful to refactor out an `info` struct in the lexer to
+store the line and column numbers (and file name? and lexeme?). This
+would be useful to include when generating assembly code.
+ */
 
 #[derive(PartialEq, Debug)]
 pub enum BinOp {
@@ -66,6 +76,27 @@ fn token_to_unary_op(token: Token) -> UnOp {
     }
 }
 
+/*
+At the level of the parse tree, we don't know the difference between a
+function call and an array access [unless the array access involves
+slicing the array].
+
+The grammar for arrays and function calls are represented by the
+`NameDataRef` node.
+
+```
+Name ::= Identifier
+NameDataRef ::= Name ComplexDataRefTail*
+ComplexDataRefTail ::= "(" SectionSubscriptList ")"
+SectionSubscriptList ::= SectionSubscript
+                      | SectionSubscript "," SectionSubscriptList
+SectionSubscript ::= Expr SubscriptTripletTail?
+                  |  SubscriptTripletTail
+SubscriptTripletTail ::= ":" Expr?
+FunctionCallExpr ::= Name "(" ")"
+```
+ */
+
 #[derive(PartialEq, Debug)]
 pub enum Expr {
     // literals
@@ -79,6 +110,7 @@ pub enum Expr {
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),
     Grouping(Box<Expr>),
+    
     // placeholder, should never be forced to arrive here
     ErrorExpr,
 }
@@ -154,6 +186,10 @@ impl Parser {
         return e;
     }
 
+    /*
+    level_5_expr ::= equiv_operand (equiv_op equiv_operand)*
+    equiv_op ::= ".eqv." | ".neqv."
+     */
     fn level_5_expr(&mut self) -> Expr {
         let mut e = self.equiv_operand();
         while self.matches(&[TokenType::Equiv, TokenType::NotEquiv]) {
@@ -165,6 +201,9 @@ impl Parser {
         return e;
     }
 
+    /*
+    equiv_operand ::= or_operand (".or." or_operand)*
+     */
     fn equiv_operand(&mut self) -> Expr {
         let mut e = self.or_operand();
         while self.matches(&[TokenType::Or]) {
@@ -176,6 +215,9 @@ impl Parser {
         return e;
     }
 
+    /*
+    or_operand ::= and_operand (".and." and_operand)*
+     */
     fn or_operand(&mut self) -> Expr {
         let mut e = self.and_operand();
         while self.matches(&[TokenType::And]) {
@@ -187,6 +229,9 @@ impl Parser {
         return e;
     }
 
+    /*
+    and_operand ::= [".not."] level_4_expr
+     */
     fn and_operand(&mut self) -> Expr {
         if self.matches(&[TokenType::Not]) {
             let rator = token_to_unary_op(self.advance());
@@ -198,6 +243,11 @@ impl Parser {
         }
     }
 
+    /*
+    level_4_expr ::= level_3_expr (rel_op level_3_expr)*
+    rel_op ::= ".eq." | ".neq." | ".le."
+            |  ".lt." | ".ge." | ".gt."
+     */
     fn level_4_expr(&mut self) -> Expr {
         let mut e = self.level_3_expr();
         while self.matches(&[TokenType::Eq, TokenType::NotEqual, TokenType::Leq,
@@ -211,7 +261,10 @@ impl Parser {
         return e;
     }
     
-
+    /*
+    level_3_expr ::= level_2_expr
+                  | level_3_expr "//' level_2_expr
+     */
     fn level_3_expr(&mut self) -> Expr {
         let mut e = self.level_2_expr();
         while self.matches(&[TokenType::Concatenation]) {
@@ -224,6 +277,10 @@ impl Parser {
     }
 
     // XXX: this is dangerous for a large number of exponentiations
+    /*
+    mult_operand ::= level_1_expr
+                  | level_1_expr "**" mult_operand
+    */
     fn mult_operand(&mut self) -> Expr {
         let b = self.level_1_expr();
         if self.check(TokenType::Pow) {
@@ -235,6 +292,11 @@ impl Parser {
         return b;
     }
 
+    /*
+    add_operand ::= mult_operand
+                 |  mult_operand mult_op add_operand;
+    mult_op ::= '*' | '/'
+    */
     fn add_operand(&mut self) -> Expr {
         let mut e = self.mult_operand();
         while self.matches(&[TokenType::Star, TokenType::Slash]) {
@@ -246,6 +308,11 @@ impl Parser {
         return e;
     }
 
+    /*
+    level_2_expr ::= [sign] add_operand
+                  |  [sign] add_operand add_op level_2_expr;
+    add_op ::= '+' | '-'
+    */
     fn level_2_expr(&mut self) -> Expr {
         let mut e;
         if self.matches(&[TokenType::Plus, TokenType::Minus]) {
@@ -263,13 +330,22 @@ impl Parser {
         }
         return e;
     }
-
+    
+    /*
+    level_1_expr ::= primary
+     */
     fn level_1_expr(&mut self) -> Expr {
         let e = self.primary();
         assert!(None == self.current);
         return e;
     }
-    
+
+    /*
+    primary ::= int_constant
+             |  real_constant
+             |  string_constant
+             |  "(" expr ")"
+     */
     fn primary(&mut self) -> Expr {
         match self.advance().token_type {
             TokenType::Integer(i) => {
