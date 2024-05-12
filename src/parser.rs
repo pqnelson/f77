@@ -122,6 +122,25 @@ pub enum Expr {
     ErrorExpr,
 }
 
+/*
+The EBNF for statements:
+
+statement = [label] "continue"
+          | [label] "goto" label
+*/
+#[derive(PartialEq, Debug)]
+pub enum StatementType {
+    Continue,
+    Goto(i32),
+    Illegal // should never be reached
+}
+
+// 6 digit label <= (10^6) - 1 < 20^19
+pub struct Statement {
+    label: Option<i32>,
+    sort: StatementType,
+}
+
 pub struct Parser {
     scanner: Lexer,
     current: Option<Token>,
@@ -240,6 +259,90 @@ impl Parser {
             return;
         } else {
             panic!("{}", msg);
+        }
+    }
+
+    /* *****************************************************************
+    Statements
+    ********************************************************** */
+    fn goto_statement(&mut self, label: Option<i32>) -> Statement {
+        assert!(TokenType::Goto == self.advance().token_type);
+        let e = self.expr();
+        let target: i32;
+        let t = self.next_token();
+        match t.token_type {
+            TokenType::Integer(v) => {
+                target = v.iter().collect::<String>().parse::<i32>().unwrap();
+            },
+            other => {
+                panic!("Line {} GOTO expected a label, found {}",
+                       t.line,
+                       other);
+            },
+        }
+        return Statement {
+            label: label,
+            sort: StatementType::Goto(target),
+        };
+    }
+
+    fn continue_statement(&mut self, label: Option<i32>) -> Statement {
+        if let Some(token) = self.peek() {
+            assert!(TokenType::Continue == token.token_type);
+            self.advance();
+            return Statement {
+                label: label,
+                sort: StatementType::Continue,
+            };
+        } else {
+            panic!("parser: continue statement has the current token is NONE?");
+        }
+    }
+    
+    /*
+    requires: start of statement
+    assigns: current if it is a label token
+    ensures: self.peek() is not a label
+     */
+    fn statement_label(&mut self) -> Option<i32> {
+        if let Some(token) = self.peek() {
+            match &token.token_type {
+                TokenType::Label(v) => {
+                    let label = Some(v.iter().collect::<String>().parse::<i32>().unwrap());
+                    self.advance();
+                    return label;
+                },
+                _ => return None,
+            };
+        } else {
+            return None;
+        }
+    }
+
+    fn illegal_statement(&mut self, label: Option<i32>) -> Statement {
+        return Statement {
+            label: label,
+            sort: StatementType::Illegal,
+        };
+    }
+    
+    pub fn statement(&mut self) -> Statement {
+        let label: Option<i32> = self.statement_label();
+        // assert!(!self.peek().token_type.is_label());
+        if let Some(token) = self.peek() {
+            match token.token_type {
+                TokenType::Goto => return self.illegal_statement(label), //return self.goto_statement(label),
+                TokenType::Continue => return self.continue_statement(label),
+                _ => {
+                    eprintln!("Parser::statement() illegal statement starting line {} with Token: #{:?}",
+                              self.scanner.line_number(),
+                              self.peek());
+                    self.advance();
+                    return self.illegal_statement(label);
+                }
+            }
+        } else {
+            return self.illegal_statement(None);
         }
     }
 

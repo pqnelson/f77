@@ -1,11 +1,39 @@
 \section{Hoare Logic}
 Having sketched out informally the syntax and semantics for the fragment
-of \FORTRAN/ 77 our compiler is targeting, we would like to now focus on
+of \FORTRAN/~77 our compiler is targeting, we would like to now focus on
 providing a Hoare logic for the fragment of \FORTRAN/. For the most
 part, this is straightforward (modulo the subtlety surrounding do-loops
 always executing the body of its loop at least once). The only
 difficulties we need to address are the \texttt{goto} statement and
 working with arrays.
+
+The game plan is to write down the inference rules for the various
+statements we will encounter in a \FORTRAN/ program unit.
+
+\subsection{Inference rules}
+Statements in \FORTRAN/ can have optional labels (so we can invoke
+\texttt{goto}). Hoare logic doesn't handle labels and \texttt{goto}
+statements well. Usually the trick is to have the ``context part'' $\Gamma$ of
+the judgement $\Gamma\vdash\varphi$ keep track of labels (plus their
+preconditions). If $\ell$ is a label, we will write $\Gamma(\ell)$ for
+its precondition in the current program unit.
+
+\subsubsection{Continue Statement}
+This is literally the ``skip'' statement in Hoare logic. Thus its rule is:
+\begin{equation}
+\frac{}{\Gamma\vdash\{P\}~\mathtt{continue}~\{P\}}.
+\end{equation}
+
+\subsubsection{GOTO Statement}
+This is one of the two places where a label is used as part of the
+statement. (The other place is the \texttt{do}-loop.)
+\begin{equation}
+\frac{\Gamma\vdash P\implies\Gamma(\ell)}{\Gamma\vdash\{P\}~\mathtt{goto}~\ell~\{\bot\}}.
+\end{equation}
+This rule looks weird because control is transferred to the statement
+at $\ell$, so the post-condition of the \texttt{goto} statement is never
+encountered. The weakest precondition calculus gives us $\bot$ as the
+postcondition.
 
 \subsection{Literature review}
 Clint and Hoare provided a rule for reasoning about \texttt{goto}
@@ -14,11 +42,11 @@ which required working with global invariants for labeled statements.
 Boyer and Moore~\cite{boyer1980vcg} have written a verification
 condition generator for \FORTRAN/, which has been instructive.
 The \textsc{Camfort} libraries\footnote{For example, \url{https://github.com/camfort/fortran-vars}} has produced a static toolkit for \FORTRAN/
-(including \FORTRAN/ 77).
+(including \FORTRAN/~77).
 
 K. Zimmermann's ``Outline of a formal deﬁnition of FORTRAN'' (1969) is a
 tech report lost to the sands of time, but ostensibly formalized a large
-fragment of \FORTRAN/ 66 in the Vienna Definition Language.
+fragment of \FORTRAN/~66 in the Vienna Definition Language.
 
 % restricted use of goto:
 % Arbib79, Luckham80, Cristian84
@@ -31,3 +59,4 @@ fragment of \FORTRAN/ 66 in the Vienna Definition Language.
 % - Gries, D. The Science of Programming. New York: Springer-Verlag, 1981. 
 % - Luckham, D. C., and N. Suzuki. “Verification of Array, Record, and Pointer Operations in Pascal.” ACM85 Trans. Prog. Lang. and Syst. 1 (1979), 226-244.
 % - Reynolds, J. C. The Craft of Programming
+

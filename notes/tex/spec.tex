@@ -1,10 +1,32 @@
 \section{Specification}
-We will now describe the grammar for our particular subset of \FORTRAN/-77.
+We will now describe the grammar for our particular subset of \FORTRAN/~77.
 This is similar to that found in the first chapter of van Loan and
 Coleman~\cite{vanloan1987handbook}. The goal will be that any program
-which our compiler accepts will also be compilable by any other \FORTRAN/-77 compiler.
+which our compiler accepts will also be compilable by any other \FORTRAN/~77 compiler.
 Like most imperative programming languages, we can partition the
 language into statements and expressions.
+
+\subsection{Important differences}
+We intentionally make a number of design decisions which deviates from
+the \FORTRAN/~77 Standard:
+\begin{enumerate}
+\item\textbf{No implicit parameters.} If an identifier does not appear
+  in the declarations area of the program unit, or names a function or
+  subroutine, then an error is raised.
+\item \textbf{Reserved keywords.} Unlike \FORTRAN/ we have reserved
+  keywords, which are NOT CASE SENSITIVE, namely:
+  \begin{itemize}
+  \item statement related: \texttt{continue}, \texttt{do}, \texttt{else}, \texttt{endif}, \texttt{end}, \texttt{function}, \texttt{goto}, \texttt{if}, \texttt{program}, \texttt{return}, \texttt{stop}, \texttt{subroutine}, \texttt{then}
+  \item Primitive functions provided by the compiler: \texttt{read}, \texttt{write}
+  \item logical constants: \texttt{.true.}, \texttt{.false.}
+  \item relational operators: \texttt{.le.}, \texttt{.lt.}, \texttt{.ge.}, \texttt{.gt.}, \texttt{.eq.}, \texttt{.ne.}
+  \item logical connectives: \texttt{.and.}, \texttt{.or.}, \texttt{.not.}, \texttt{.eqv.}, \texttt{.neqv.}
+  \item types: \texttt{integer}, \texttt{real}, \texttt{character}, \texttt{logical}
+  \end{itemize}
+\item\textbf{Array sections.} This was found in \FORTRAN/~90, and was
+  available only for character arrays in \FORTRAN/~77. But it was easier
+  to just implement it for \emph{all} arrays.
+\end{enumerate}
 
 \subsection{Program structure}
 The program consists of a \texttt{program\dots end} block. The grammar
@@ -22,12 +44,12 @@ $\langle$\textit{statements\/}$\rangle$
 \noindent\texttt{end}
 \end{quotation}
 
-The \FORTRAN/-77 Standard is quite clear that the \texttt{program}
+The \FORTRAN/~77 Standard is quite clear that the \texttt{program}
 statement must be the first ``program unit'' of a main program (\S3.5),
 followed by functions and subroutines.
 
 \subsection{Line length}
-Each line in a \FORTRAN/-77 code must conform to certain column position
+Each line in a \FORTRAN/~77 code must conform to certain column position
 rules:
 \begin{itemize}
 \item Column 1 --- must be blank unless the line is a comment or a label;
@@ -84,7 +106,7 @@ This is the same as the ``skip'' statement in Hoare logic, a
 says as well, see \S11.11 of the \FORTRAN/ 77 Standard.)
 
 \subsubsection{Loops}
-The semantics for loops in \FORTRAN/-77 is quite different than in
+The semantics for loops in \FORTRAN/~77 is quite different than in
 C-like languages. The syntax looks quite simple:
 \begin{quotation}
 \noindent\texttt{do} $\langle$\textit{label\/}$\rangle$
@@ -128,7 +150,7 @@ access to a \FORTRAN/ 77 compiler and \FORTRAN/ 90 changed this
 behaviour: \S8.1.4.4.2 of the \FORTRAN/
 90 Standard states that a do-loop's body is executed only after the
 iteration count is tested).
-This is an overly simplified version of \FORTRAN/-77's
+This is an overly simplified version of \FORTRAN/~77's
 do-loop.\footnote{For the gory details, see \FORTRAN/ 77 standard 11.10,
 e.g., \url{https://wg5-fortran.org/ARCHIVE/Fortran77.html}}
 
@@ -254,7 +276,7 @@ from the alphanumeric set \texttt{ABC\dots XYZ0123456789}, and must
 begin with a letter.
 
 \subsubsection{Types}
-We only really need 4 types, though \FORTRAN/-77 had 6 types. The types
+We only really need 4 types, though \FORTRAN/~77 had 6 types. The types
 we support: \texttt{integer}, \texttt{real} (for floating-point
 numbers), \texttt{logical} (for Boolean values), and \texttt{character}.
 
@@ -275,8 +297,8 @@ $A(1,5)$, $A(2,1)$, \dots, $A(2,5)$, $A(3,1)$, $A(3,2)$, \dots, $A(3,5)$.
 For locality, you would want to loop over the right-most indexes first.
 
 \subsection{Expressions}
-We will work with a subset of all possible \FORTRAN/-77
-expressions.\footnote{The entire grammar for \FORTRAN/ 77 may be found
+We will work with a subset of all possible \FORTRAN/~77
+expressions.\footnote{The entire grammar for \FORTRAN/~77 may be found
 at \url{https://slebok.github.io/zoo/fortran/f90/waite-cordy/extracted/index.html}}
 
 \subsubsection{Arithmetic Expressions}
@@ -357,7 +379,7 @@ except that a subroutine call is a statement, whereas a function call
 may be an expression or a statement.
 
 \subsubsection{Parameter Passing}
-Function calls in \FORTRAN/ 77 uses the ``call-by-reference'' strategy
+Function calls in \FORTRAN/~77 uses the ``call-by-reference'' strategy
 for parameter passing. Effectively, this passes a pointer to the value.
 This is specified by \S15.9 of the Standard. The LLVM documentation for
 \FORTRAN/ function calling
