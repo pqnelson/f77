@@ -148,6 +148,7 @@ pub struct Parser {
     scanner: Lexer,
     current: Option<Token>,
     continuation_count: u8,
+    is_panicking: bool,
 }
 
 /* The Fortran 77 Standard explicitly states:
@@ -173,6 +174,7 @@ impl Parser {
             scanner: scanner,
             current: None,
             continuation_count: 0,
+            is_panicking: false,
         }
     }
 
@@ -261,7 +263,33 @@ impl Parser {
             self.advance();
             return;
         } else {
-            panic!("{}", msg);
+            panic!("ERROR on Line {}: {}", self.scanner.line_number(), msg);
+        }
+    }
+
+    fn is_at_next_statement(&mut self) -> bool {
+        if let Some(token) = self.peek() {
+            match token.token_type {
+                TokenType::Label(_) => return true,
+                _ => return false,
+            };
+        } else {
+            return self.is_finished();
+        }
+    }
+
+    /*
+    requires: self.is_panicking = true;
+    assigns: self.current is updated until we're at the next statement;
+    ensures: self.peek() is a label token or a new statement token
+     */
+    fn synchronize(&mut self) {
+        while !self.is_finished() {
+            if self.is_at_next_statement() {
+                return;
+            } else {
+                self.advance();
+            }
         }
     }
 
@@ -307,6 +335,7 @@ impl Parser {
     */
     fn write(&mut self, label: Option<i32>) -> Statement {
         assert!(TokenType::Write == self.advance().token_type);
+        
         self.consume(TokenType::LeftParen,
                      "Expected left paren in WRITE statement's UNIT");
         self.consume(TokenType::Star,
