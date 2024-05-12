@@ -61,6 +61,22 @@ pub enum TokenType {
     Illegal, Eof
 }
 
+impl TokenType {
+    pub fn is_continuation(&mut self) -> bool {
+        match self {
+            TokenType::Continuation(_) => return true,
+            _ => return false,
+        }
+    }
+    
+    pub fn is_label(&mut self) -> bool {
+        match self {
+            TokenType::Label(_) => return true,
+            _ => return false,
+        }
+    }
+}
+
 impl fmt::Display for TokenType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -192,9 +208,9 @@ fn get_keyword_token(ident: &Vec<char>) -> Result<TokenType, String> {
 
 pub struct Lexer {
     input: Vec<char>,           // Source code
-    pub position: usize,        // Reading position
-    pub read_position: usize,   // Current moving reading position
-    pub ch: char,               // Current read character
+    position: usize,        // Reading position
+    read_position: usize,   // Current moving reading position
+    ch: char,               // Current read character
     line: i64,                  // Line number
     offset: i64                 // Offset from the start of the line
 }
@@ -242,6 +258,10 @@ impl Lexer {
         }
     }
 
+    pub fn line_number(&mut self) -> i64 {
+        return self.line;
+    }
+    
     pub fn is_finished(&mut self) -> bool {
         return self.read_position >= self.input.len();
     }

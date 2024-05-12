@@ -7,28 +7,14 @@ use crate::lexer::{
 
 /*
 Current plans:
-1. "Named data references" expression
-2. Fix line number problems
-  - When advancing through the tokens, we should skip over continuation
-    tokens when parsing an expression or a statement. 
-  - If we want to adhere to the "letter of the law", we should track how
-    many lines the current statement has, since the 77 Standard says that
-    a statement consists "of an initial line and as many as nineteen
-    continuation lines." This could be flagged with a warning, or we
-    could enter panic mode.
-  - The Fortran 90 Standard explicitly says:
-    "A fixed form statement must not have more than 19 continuation lines."
-    (3.3.2.4) The free-form Fortran 90 is more generous, a free form
-    statement must not have more than 39 continuation lines (3.3.1.4).
-    Again, how to handle this? Issue a warning? Panic? 
-3. Statements
+1. Statements
   - Simple statements (assignment?)
   - If-then-else statements
   - Labels and goto statements
   - do-loops
   - We should also note that the 77 Standard says, "a statement must
     contain no more than 1320 characters." (3.3)
-4. Program Units
+2. Program Units
 
 I found it useful to write the grammar rules as comments before each
 function. This is a simple recursive descent parser, so production rules
@@ -110,7 +96,6 @@ SubscriptTripletTail ::= ":" Expr?
 FunctionCallExpr ::= Name "(" ")"
 ```
  */
-
 #[derive(PartialEq, Debug)]
 pub enum Expr {
     // literals
@@ -139,14 +124,48 @@ pub enum Expr {
 
 pub struct Parser {
     scanner: Lexer,
-    current: Option<Token>
+    current: Option<Token>,
+    continuation_count: u8,
 }
+
+/* The Fortran 77 Standard explicitly states:
+
+>          3.2.3  Continuation_Line.  A continuation line  is  any
+>          line   that  contains  any  character  of  the  FORTRAN
+>          character set other than the  character  blank  or  the
+>          digit  0 in column 6 and contains only blank characters
+>          in columns 1 through 5.  A statement must not have more
+>          than nineteen continuation lines.
+
+The Fortran 90 Standard also explicitly states: "A fixed form statement
+must not have more than 19 continuation lines." (3.3.2.4)
+
+Free-form F90 extends this to 39 lines (see section 3.3.1.4 of the
+Fortran 90 Standard).
+*/
+pub const MAX_CONTINUATIONS : u8 = 19;
 
 impl Parser {
     pub fn new(scanner: Lexer) -> Self {
         Self {
             scanner: scanner,
-            current: None
+            current: None,
+            continuation_count: 0,
+        }
+    }
+
+    // to be invoked in `statement()`
+    fn reset_continuation_count(&mut self) {
+        self.continuation_count = 0;
+    }
+
+    fn inc_continuation_count(&mut self) {
+        self.continuation_count += 1;
+        if self.continuation_count > MAX_CONTINUATIONS {
+            // I am too nice to throw an error here, a warning suffices.
+            eprintln!("Warning: found {} continuations as of line {}",
+                      self.continuation_count,
+                      self.scanner.line_number());
         }
     }
 
@@ -154,9 +173,29 @@ impl Parser {
         return None == self.current && self.scanner.is_finished();
     }
 
+    /*
+    Skips continuation tokens, while tracking how many we have seen
+    parsing the current statement.
+
+    This is THE source of tokens in the parser, DO NOT access the
+    scanner's next token directly.
+    
+    Requires: nothing.
+    Assigns: updates the scanner.
+    Ensures: result is not a continuation.
+    */
+    fn next_token(&mut self) -> Token {
+        let mut t = self.scanner.next_token();
+        while t.token_type.is_continuation() {
+            self.inc_continuation_count();
+            t = self.scanner.next_token();
+        }
+        return t;
+    }
+
     fn populate_current(&mut self) -> () {
         if None == self.current && !self.is_finished() {
-            self.current = Some(self.scanner.next_token());
+            self.current = Some(self.next_token());
         }
     }
 
@@ -171,7 +210,7 @@ impl Parser {
             return v;
         } else {
             assert!(self.current == None);
-            return self.scanner.next_token();
+            return self.next_token();
         }
     }
 
@@ -378,17 +417,19 @@ impl Parser {
         let stride;
         if self.matches(&[TokenType::Comma,
                           TokenType::RightParen]) {
-            // matches `":"`
+            // case 1: matches `":"`
             stop = None;
             stride = None;
         } else if self.matches(&[TokenType::Colon]) {
-            // matches `":" ":" expr`
+            // case 3: matches `":" ":" expr`
             self.advance();
             stop = None;
             stride = Some(Box::new(self.subscript()));
         } else {
-            // matches `expr [":" expr]`
+            // case 2 or 4: matches `expr [":" expr]`
             stop = Some(Box::new(self.subscript()));
+            
+            // [":" expr]
             if self.matches(&[TokenType::Colon]) {
                 self.advance();
                 stride = Some(Box::new(self.subscript()));
@@ -424,6 +465,35 @@ impl Parser {
             }
         }
     }
+
+    fn array_section_or_fn_call(&mut self, identifier: String) -> Expr {
+        let mut args = Vec::<Expr>::with_capacity(64);
+        let mut is_array_section = false;
+        /* parses section_subscript {"," section_subscript} */
+        loop {
+            let e = self.section_subscript();
+            if !is_array_section {
+                match e {
+                    Expr::Section(_) => is_array_section = true,
+                    _ => {}
+                }
+            }
+            args.push(e);
+            if self.matches(&[TokenType::Comma]) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        args.shrink_to_fit();
+        if is_array_section {
+            return Expr::ArraySection(identifier, args);
+        } else {
+            return Expr::NamedDataRef(identifier, args);
+        }
+        // it's an array, or a function reference, or an array slice
+        // we do not know until we get more information
+    }
     
     /*
 named_data_ref = identifier
@@ -432,43 +502,23 @@ named_data_ref = identifier
      */
     fn named_data_ref(&mut self, identifier: Token) -> Expr {
         if let TokenType::Identifier(v) = identifier.token_type {
+            // CASE 1: an identifier
             if !self.matches(&[TokenType::LeftParen]) {
                 /* Note: into_iter moves the characters from the token
                    into the expression */
                 return Expr::Variable(v.into_iter().collect());
             }
             self.consume(TokenType::LeftParen, "Expected '(' in array access or function call");
+            // CASE 2: a function call
             if self.matches(&[TokenType::RightParen]) {
                 self.advance();
                 return Expr::FunCall(v.into_iter().collect(),
                                      Vec::new());
-            }
-            let mut args = Vec::<Expr>::with_capacity(64);
-            let mut is_array_section = false;
-            /* parses section_subscript {"," section_subscript} */
-            loop {
-                let e = self.section_subscript();
-                if !is_array_section {
-                    match e {
-                        Expr::Section(_) => is_array_section = true,
-                        _ => {}
-                    }
-                }
-                args.push(e);
-                if self.matches(&[TokenType::Comma]) {
-                    self.advance();
-                } else {
-                    break;
-                }
-            }
-            args.shrink_to_fit();
-            if is_array_section {
-                return Expr::ArraySection(v.into_iter().collect(), args);
             } else {
-                return Expr::NamedDataRef(v.into_iter().collect(), args);
+                // CASE 3: array section, array element, or function
+                // call with arguments
+                return self.array_section_or_fn_call(v.into_iter().collect());
             }
-            // it's an array, or a function reference, or an array slice
-            // we do not know until we get more information
         } else {
             panic!("This should never be reached! Expected an identifier, received {}", identifier);
         }

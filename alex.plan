@@ -1,4 +1,11 @@
 <!--- -*- mode: Markdown; var: -*- -->
+# 2024-05-12T11:58:44-0700
+
+So this should conclude the parsing of expressions, which means I can
+begin parsing statements. I should really spend more time writing unit
+tests for all possible expressions in Fortran, but I'm mildly confident
+it works fine.
+
 # 2024-05-12T09:35:00-0700
 
 It dawns on me that I am going to need to parse `write (*,*) <iolist>`
