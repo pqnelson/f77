@@ -129,7 +129,7 @@ statement = [label] "continue"
           | [label] "goto" label
 */
 #[derive(PartialEq, Debug)]
-pub enum StatementType {
+pub enum Command {
     Continue,
     Goto(i32),
     Write(Vec<Expr>),
@@ -141,7 +141,7 @@ pub enum StatementType {
 #[derive(PartialEq, Debug)]
 pub struct Statement {
     label: Option<i32>,
-    sort: StatementType,
+    command: Command,
 }
 
 pub struct Parser {
@@ -339,7 +339,7 @@ impl Parser {
                      "Expected right paren in READ statement's UNIT");
         return Statement {
             label: label,
-            sort: StatementType::Read(self.io_list()),
+            command: Command::Read(self.io_list()),
         };
     }
     
@@ -361,7 +361,7 @@ impl Parser {
                      "Expected right paren in WRITE statement's UNIT");
         return Statement {
             label: label,
-            sort: StatementType::Write(self.io_list()),
+            command: Command::Write(self.io_list()),
         };
     }
     
@@ -381,7 +381,7 @@ impl Parser {
         }
         return Statement {
             label: label,
-            sort: StatementType::Goto(target),
+            command: Command::Goto(target),
         };
     }
 
@@ -391,7 +391,7 @@ impl Parser {
             self.advance();
             return Statement {
                 label: label,
-                sort: StatementType::Continue,
+                command: Command::Continue,
             };
         } else {
             panic!("parser: continue statement has the current token is NONE?");
@@ -430,7 +430,7 @@ impl Parser {
     fn illegal_statement(&mut self, label: Option<i32>) -> Statement {
         return Statement {
             label: label,
-            sort: StatementType::Illegal,
+            command: Command::Illegal,
         };
     }
     /*
@@ -824,7 +824,7 @@ mod tests {
             args.shrink_to_fit();
             let expected = Statement {
                 label: Some(10 as i32),
-                sort: StatementType::Write(args),
+                command: Command::Write(args),
             };
             should_parse_stmt!(" 10   WRITE (*,*) X",
                                expected);
@@ -839,7 +839,7 @@ mod tests {
             args.shrink_to_fit();
             let expected = Statement {
                 label: Some(10 as i32),
-                sort: StatementType::Write(args),
+                command: Command::Write(args),
             };
             should_parse_stmt!(" 10   WRITE (*,*) X, Y,Z",
                                expected);
@@ -852,7 +852,7 @@ mod tests {
             args.shrink_to_fit();
             let expected = Statement {
                 label: Some(10 as i32),
-                sort: StatementType::Read(args),
+                command: Command::Read(args),
             };
             should_parse_stmt!(" 10   READ (*,*) X",
                                expected);
@@ -867,7 +867,7 @@ mod tests {
             args.shrink_to_fit();
             let expected = Statement {
                 label: Some(10 as i32),
-                sort: StatementType::Read(args),
+                command: Command::Read(args),
             };
             should_parse_stmt!(" 10   READ (*,*) X, Y,Z",
                                expected);
@@ -877,7 +877,7 @@ mod tests {
         fn zero_label_continue_is_unlabeled() {
             let expected = Statement {
                 label: None,
-                sort: StatementType::Continue
+                command: Command::Continue
             };
             should_parse_stmt!(" 0    continue",
                                expected);
@@ -887,7 +887,7 @@ mod tests {
         fn labeled_continue_with_leading_zeros() {
             let expected = Statement {
                 label: Some(10 as i32),
-                sort: StatementType::Continue
+                command: Command::Continue
             };
             should_parse_stmt!(" 010  continue",
                                expected);
@@ -897,7 +897,7 @@ mod tests {
         fn labeled_continue() {
             let expected = Statement {
                 label: Some(10 as i32),
-                sort: StatementType::Continue
+                command: Command::Continue
             };
             should_parse_stmt!(" 10   continue",
                                expected);
@@ -907,7 +907,7 @@ mod tests {
         fn unlabeled_continue() {
             let expected = Statement {
                 label: None,
-                sort: StatementType::Continue
+                command: Command::Continue
             };
             should_parse_stmt!("      continue",
                                expected);
@@ -917,7 +917,7 @@ mod tests {
         fn labeled_goto() {
             let expected = Statement {
                 label: Some(100 as i32),
-                sort: StatementType::Goto(325)
+                command: Command::Goto(325)
             };
             should_parse_stmt!(" 100  goto 325",
                                expected);
@@ -927,7 +927,7 @@ mod tests {
         fn unlabeled_goto() {
             let expected = Statement {
                 label: None,
-                sort: StatementType::Goto(321)
+                command: Command::Goto(321)
             };
             should_parse_stmt!("      goto 321",
                                expected);
