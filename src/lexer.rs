@@ -29,7 +29,7 @@ pub enum TokenType {
     Concatenation, // i.e., "//"
     Star,
     Pow, // "**"
-    Equal,
+    Equal, // "=" for assignment, do-loop initialization
     Colon, 
 
     Continuation(char),

@@ -143,14 +143,30 @@ pub enum Command {
              positive: i32},
     IfStatement {test: Expr,
                  true_branch: Box::<Statement>},
+    LabelDo {target_label: i32,
+             var: Expr,
+             start: Expr,
+             stop: Expr,
+             stride: Option<Expr>,
+             body: Vec<Statement>,
+             terminal: Box<Statement>},
     Illegal // should never be reached
 }
-
+    
 // 5 digit label with values <= (10^5) - 1 <= 0b11000011010011111 < 2^17
 #[derive(PartialEq, Debug)]
 pub struct Statement {
     label: Option<i32>,
     command: Command,
+}
+
+impl Statement {
+    pub fn is_continue(&mut self) -> bool {
+        match self.command {
+            Command::Continue => return true,
+            _ => return false,
+        }
+    }
 }
 
 pub struct Parser {
@@ -159,6 +175,7 @@ pub struct Parser {
     continuation_count: i16,
     line: usize,
     is_panicking: bool,
+    pub support_f90: bool,
 }
 
 /* The Fortran 77 Standard explicitly states:
@@ -186,6 +203,7 @@ impl Parser {
             continuation_count: -1,
             line: 0,
             is_panicking: false,
+            support_f90: true,
         }
     }
 
@@ -294,7 +312,8 @@ impl Parser {
             self.advance();
             return;
         } else {
-            panic!("ERROR on Line {}: {}", self.scanner.line_number(), msg);
+            let token = self.advance();
+            panic!("ERROR on Line {}: {}, found {token}", self.scanner.line_number(), msg);
         }
     }
 
@@ -645,6 +664,170 @@ impl Parser {
                                            true_branch: Box::new(self.statement())},
         };
     }
+
+    /*
+    ```ebnf
+    (* R817 *)
+    block_do_construct = do_statement newline do_block newline end_do;
+    (* R818 *)
+    do_statement = label_do_statement
+                 | nonlabel_do_statement;
+    (* R819 *)
+    label_do_statement = "do" label [loop_control];
+    (* R820 *)
+    nonlabel_do_statement = "do" [loop_control];
+    (* R821 *)
+    loop_control = do_var "=" scalar_numeric_expr "," scalar_numeric_expr ["," scalar_numeric_expr];
+
+    do_block = {statement newline};
+
+    end_do = "end do" | label continue;
+    ```
+     */
+    fn block_do_construct(&mut self, label: Option<i32>) -> Statement {
+        self.consume(TokenType::Do, "");
+        let line = self.line;
+        if let Some(token) = self.peek() {
+            match &token.token_type {
+                TokenType::Integer(v) => {
+                    let end_label = v.iter().collect::<String>().parse::<i32>().unwrap();
+                    self.advance();
+                    return self.label_do_statement(label, end_label);
+                },
+                TokenType::Identifier(_) => {
+                    return self.nonlabel_do_statement(label);
+                },
+                _ => {
+                    panic!("DO statement on line {} expects either a label or a variable, found {:?}",
+                           line,
+                           token);
+                }
+            }
+        } else {
+            panic!("Do statement on line {} is runaway?", line);
+        }
+    }
+
+    // parses `var "=" expr "," expr ["," expr]`
+    fn loop_control(&mut self) -> (Expr, Expr, Expr, Option<Expr>) {
+        let line = self.line;
+        let var = self.expr();
+        self.consume(TokenType::Equal, "Expected a '=' to initialize variable in do-loop");
+        let start = self.expr();
+        self.consume(TokenType::Comma, "Expected a ',' to separate start from stop expressions in do-loop");
+        let stop = self.expr();
+        let stride;
+        if let Some(token) = self.peek() {
+            match token.token_type {
+                TokenType::Comma => {
+                    self.advance();
+                    stride = Some(self.expr());
+                },
+                _ => {
+                    stride = None;
+                    if line == token.line {
+                        panic!("Found unexpected token {:?} in loop control on line {}",
+                               token,
+                               line);
+                    }
+                }
+            }
+        } else {
+            panic!("Do-loop terminated unexpectedly in loop-control on line {}", line);
+        }
+        return (var, start, stop, stride);
+    }
+
+    fn label_do_statement(&mut self, label: Option<i32>, target: i32) -> Statement {
+        let line = self.line;
+        // parse the loop_control
+        let (var, start, stop, stride) = self.loop_control();
+        // parse the do_block
+        let mut target_statement;
+        let mut do_block = Vec::<Statement>::with_capacity(32);
+        loop {
+            let statement = self.statement();
+            if Some(target) == statement.label {
+                target_statement = statement;
+                if !target_statement.is_continue() {
+                    eprintln!("WARNING: do-loop starting on line {} terminated on line {} by statement which is not a 'continue', found: {:?}",
+                              line,
+                              self.line,
+                              target_statement);
+                }
+                break;
+            }
+            do_block.push(statement);
+        }
+        do_block.shrink_to_fit();
+        return Statement {
+            label: label,
+            command: Command::LabelDo {
+                target_label: target,
+                var: var,
+                start: start,
+                stop: stop,
+                stride: stride,
+                body: do_block,
+                terminal: Box::new(target_statement)
+            },
+        };
+    }
+
+    /*
+     */
+    fn nonlabel_do_statement(&mut self, label: Option<i32>) -> Statement {
+        let line = self.line;
+        if !self.support_f90 {
+            eprintln!("WARNING: trying to parse do-loop on line {} using Fortran 90 syntax",
+                      line);
+        }
+        fn found_end(this: &mut Parser, start_line: usize) -> bool {
+            if let Some(token) = this.peek() {
+                if TokenType::End == token.token_type {
+                    this.advance(); // eat the End
+                    this.consume(TokenType::Do, "do-loop starting on line {start_line} terminated by END but not END DO");
+                    return true;
+                } else {
+                    return false;
+                }
+            } else {
+                panic!("do-loop starting on line {} runaway", start_line);
+            }
+        }
+        // parse the loop_control
+        let (var, start, stop, stride) = self.loop_control();
+        // parse the do_block
+        let mut do_block = Vec::<Statement>::with_capacity(32);
+        loop {
+            if found_end(self, line) {
+                break;
+            }
+            do_block.push(self.statement());
+        }
+        // hack
+        let terminal_statement = Statement {
+            label: None,
+            command: Command::Continue,
+        };
+
+        do_block.shrink_to_fit();
+
+        return Statement {
+            label: label,
+            command: Command::LabelDo {
+                target_label: -1,
+                var: var,
+                start: start,
+                stop: stop,
+                stride: stride,
+                body: do_block,
+                terminal: Box::new(terminal_statement)
+            },
+        };
+        
+        return self.illegal_statement(label);
+    }
     
     /*
     requires: start of statement
@@ -716,7 +899,7 @@ impl Parser {
                 TokenType::Continue => return self.continue_statement(label),
                 TokenType::Write => return self.write(label),
                 TokenType::Read => return self.read(label),
-                TokenType::Do => return self.illegal_statement(label),
+                TokenType::Do => return self.block_do_construct(label),
                 TokenType::If => return self.if_construct(label),
                 _ => {
                     eprintln!("Parser::statement() illegal statement starting line {} with Token: #{:?}",
@@ -1066,6 +1249,139 @@ mod tests {
                 let actual = parser.statement();
                 assert_eq!($expected, actual);
             }
+        }
+
+        #[test]
+        fn f77_do_loop_example() {
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("X")));
+            args.shrink_to_fit();
+            let mut do_body = vec!(Statement {
+                label: None,
+                command: Command::Write(args),
+            });
+            do_body.shrink_to_fit();
+            let terminal = Statement {
+                label: Some(100),
+                command: Command::Continue,
+            };
+            let expected = Statement {
+                label: None,
+                command: Command::LabelDo {
+                    target_label: 100,
+                    var: Expr::Variable(String::from("I")),
+                    start: Expr::Int64(1),
+                    stop: Expr::Int64(10),
+                    stride: None,
+                    body: do_body,
+                    terminal: Box::new(terminal),
+                },
+            };
+            should_parse_stmt!(["      DO 100 I = 1,10",
+                                "      WRITE (*,*) X",
+                                " 100  CONTINUE"
+                                ].join("\n"),
+                               expected);            
+        }
+
+        #[test]
+        fn f77_do_loop_with_stride_example() {
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("X")));
+            args.shrink_to_fit();
+            let mut do_body = vec!(Statement {
+                label: None,
+                command: Command::Write(args),
+            });
+            do_body.shrink_to_fit();
+            let terminal = Statement {
+                label: Some(100),
+                command: Command::Continue,
+            };
+            let expected = Statement {
+                label: None,
+                command: Command::LabelDo {
+                    target_label: 100,
+                    var: Expr::Variable(String::from("I")),
+                    start: Expr::Int64(1),
+                    stop: Expr::Int64(10),
+                    stride: Some(Expr::Int64(3)),
+                    body: do_body,
+                    terminal: Box::new(terminal),
+                },
+            };
+            should_parse_stmt!(["      DO 100 I = 1,10,3",
+                                "      WRITE (*,*) X",
+                                " 100  CONTINUE"
+                                ].join("\n"),
+                               expected);            
+        }
+
+        #[test]
+        fn f77_do_loop_with_negative_stride_example() {
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("X")));
+            args.shrink_to_fit();
+            let mut do_body = vec!(Statement {
+                label: None,
+                command: Command::Write(args),
+            });
+            do_body.shrink_to_fit();
+            let terminal = Statement {
+                label: Some(100),
+                command: Command::Continue,
+            };
+            let expected = Statement {
+                label: None,
+                command: Command::LabelDo {
+                    target_label: 100,
+                    var: Expr::Variable(String::from("I")),
+                    start: Expr::Int64(10),
+                    stop: Expr::Int64(1),
+                    stride: Some(Expr::Unary(UnOp::Minus,
+                                             Box::new(Expr::Int64(3)))),
+                    body: do_body,
+                    terminal: Box::new(terminal),
+                },
+            };
+            should_parse_stmt!(["      DO 100 I = 10,1,-3",
+                                "      WRITE (*,*) X",
+                                " 100  CONTINUE"
+                                ].join("\n"),
+                               expected);            
+        }
+
+        #[test]
+        fn f90_do_loop_example() {
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("X")));
+            args.shrink_to_fit();
+            let mut do_body = vec!(Statement {
+                label: None,
+                command: Command::Write(args),
+            });
+            do_body.shrink_to_fit();
+            let terminal = Statement {
+                label: None,
+                command: Command::Continue,
+            };
+            let expected = Statement {
+                label: None,
+                command: Command::LabelDo {
+                    target_label: -1,
+                    var: Expr::Variable(String::from("I")),
+                    start: Expr::Int64(1),
+                    stop: Expr::Int64(10),
+                    stride: None,
+                    body: do_body,
+                    terminal: Box::new(terminal),
+                },
+            };
+            should_parse_stmt!(["      DO I = 1,10",
+                                "      WRITE (*,*) X",
+                                "      END DO"
+                                ].join("\n"),
+                               expected);            
         }
 
         #[test]

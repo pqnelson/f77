@@ -10,9 +10,9 @@ Right now, here's the progress:
     - [X] GOTO
     - [X] Continue
     - [X] Read and write statements
-    - [ ] If statement
+    - [X] If statement
+    - [X] do-loop
     - [ ] Assignment
-    - [ ] do-loop
     - [ ] Function call statement
     - [ ] Subroutine call statement
   - [ ] Program unit parser (for the main program, functions, subroutines)
