@@ -145,7 +145,7 @@ impl fmt::Display for TokenType {
 #[derive(PartialEq, Debug)] 
 pub struct Token {
     pub token_type: TokenType,
-    pub line: i64
+    pub line: usize,
 }
 
 impl fmt::Display for Token {
@@ -156,7 +156,7 @@ impl fmt::Display for Token {
 
 
 impl Token {
-    pub fn new(t: TokenType, l: i64) -> Self {
+    pub fn new(t: TokenType, l: usize) -> Self {
         Self {
             token_type: t,
             line: l
@@ -207,12 +207,12 @@ fn get_keyword_token(ident: &Vec<char>) -> Result<TokenType, String> {
 }
 
 pub struct Lexer {
-    input: Vec<char>,           // Source code
+    input: Vec<char>,       // Source code
     position: usize,        // Reading position
     read_position: usize,   // Current moving reading position
     ch: char,               // Current read character
-    line: i64,                  // Line number
-    offset: i64                 // Offset from the start of the line
+    line: usize,            // Line number
+    offset: i64             // Offset from the start of the line
 }
 
 fn is_letter(ch: char) -> bool {
@@ -258,7 +258,7 @@ impl Lexer {
         }
     }
 
-    pub fn line_number(&mut self) -> i64 {
+    pub fn line_number(&mut self) -> usize {
         return self.line;
     }
     

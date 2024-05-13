@@ -148,6 +148,7 @@ pub struct Parser {
     scanner: Lexer,
     current: Option<Token>,
     continuation_count: u8,
+    line: usize,
     is_panicking: bool,
 }
 
@@ -174,6 +175,7 @@ impl Parser {
             scanner: scanner,
             current: None,
             continuation_count: 0,
+            line: 0,
             is_panicking: false,
         }
     }
@@ -181,6 +183,7 @@ impl Parser {
     // to be invoked in `statement()`
     fn reset_continuation_count(&mut self) {
         self.continuation_count = 0;
+        self.line = self.scanner.line_number();
     }
 
     fn inc_continuation_count(&mut self) {
@@ -210,9 +213,19 @@ impl Parser {
     */
     fn next_token(&mut self) -> Token {
         let mut t = self.scanner.next_token();
+        let mut continues = false;
         while t.token_type.is_continuation() {
             self.inc_continuation_count();
             t = self.scanner.next_token();
+            continues = true;
+        }
+        if t.line != self.line {
+            if continues || 0 == self.line {
+                self.line = t.line;
+            } else {
+                panic!("Line continuation needed to start line {}",
+                       t.line);
+            }
         }
         return t;
     }
