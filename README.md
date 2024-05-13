@@ -2,7 +2,21 @@ This is a compiler for a large subset of Fortran 77, targeting a
 hypothetical CPU assembly language. The output is a file containing
 assembly code for the Fortran source code being compiled.
 
-Right now, it's just a lexer for a fragment of Fortran 77. Soon I hope
+Right now, here's the progress:
+- [X] Lexer
+- [ ] Parser
+  - [X] Expression parser
+  - [ ] Statement parser
+    - [X] GOTO
+    - [X] Continue
+    - [X] Read and write statements
+    - [ ] If statement
+    - [ ] Assignment
+    - [ ] do-loop
+    - [ ] Function call statement
+    - [ ] Subroutine call statement
+  - [ ] Program unit parser
+- [ ] Code generation
 to add a parser, then code optimizer, and finally a code generator.
 
 # Subset of FORTRAN 77

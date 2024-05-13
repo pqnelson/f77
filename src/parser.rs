@@ -389,6 +389,10 @@ impl Parser {
     requires: start of statement
     assigns: current if it is a label token
     ensures: self.peek() is not a label
+    ensures: result == None if the initial token is not a TokenType::Label
+             OR its TokenType::Label(value) has value == 0
+    ensures: result == Some(value) if the token is TokenType::Label(value) 
+             with value > 0 --- discards leading zeros.
      */
     fn statement_label(&mut self) -> Option<i32> {
         if let Some(token) = self.peek() {
@@ -416,7 +420,28 @@ impl Parser {
             sort: StatementType::Illegal,
         };
     }
-    
+    /*
+    (* Section 11.5 of F77 says an action-statement is any statement
+    which is not a DO, block IF, ELSE IF, ELSE, END IF, END, or another
+    logical-if statement. See also R807 of the Fortran 90 Standard (and
+    R216 for action statements in Fortran 90). *)
+    logical-if-statement = "if" if-test action-statement;
+    if-test = "(" bool-expr ")";
+    endif = "endif" | "end" "if";
+    if-statement = "if" if-test "then" {statement} endif
+                 | "if" if-test "then" {statement} "else" {statement} endif
+                 | logical-if-statement
+     */
+    /*
+    action-statement = goto-statement
+                     | read-statement
+                     | write-statement
+                     | continue-statement
+                     | assignment-statement
+    statement = action-statement
+              | do-statement
+              | if-statement;
+     */
     pub fn statement(&mut self) -> Statement {
         self.reset_continuation_count();
         let label: Option<i32> = self.statement_label();
@@ -427,6 +452,8 @@ impl Parser {
                 TokenType::Continue => return self.continue_statement(label),
                 TokenType::Write => return self.write(label),
                 TokenType::Read => return self.read(label),
+                TokenType::Do => return self.illegal_statement(label),
+                TokenType::If => return self.illegal_statement(label),
                 _ => {
                     eprintln!("Parser::statement() illegal statement starting line {} with Token: #{:?}",
                               self.scanner.line_number(),

@@ -1,4 +1,20 @@
 <!--- -*- mode: Markdown; var: -*- -->
+# 2024-05-12T19:18:39-0700
+
+Remembering some bits of x86 assembly with AT&T syntax:
+
+- `lea <mem>, <reg32>` loads effective address, places the address
+  specified by the 
+  first operand into the register specified by the second operand
+- `mov` moves data referred by the first operand into the location given
+  by the second operand
+- `rbp` is the frame base pointer [hence "bp"] in x86-64, `rsp` is the
+  stack pointer [hence "sp"]
+- `symbol@GOTOFF` addresses the variable itself, relative to the GOT
+  base (a convenient but arbitrary choice of anchor). This usually
+  appears as the first operand in a `leal` instruction in a lot of
+  disassembly. 
+
 # 2024-05-12T11:58:44-0700
 
 So this should conclude the parsing of expressions, which means I can
