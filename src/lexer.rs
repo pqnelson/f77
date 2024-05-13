@@ -52,7 +52,7 @@ pub enum TokenType {
     Stop, End, Function, Return, Subroutine,
     Less, Leq, Eq, NotEqual, Greater, Geq,
     Not, And, Or, Equiv, NotEquiv, Xor,
-    Goto,
+    Goto, Call,
 
     // Provided primitive functions
     Write, Read,
@@ -114,6 +114,7 @@ impl fmt::Display for TokenType {
             TokenType::EndIf => return write!(f, "endif"),
             TokenType::Do => return write!(f, "do"),
             TokenType::Continue => return write!(f, "continue"),
+            TokenType::Call => return write!(f, "call"),
             TokenType::True => return write!(f, ".TRUE."),
             TokenType::False => return write!(f, ".FALSE."),
             TokenType::Stop => return write!(f, "STOP"),
@@ -178,6 +179,7 @@ fn get_keyword_token(ident: &Vec<char>) -> Result<TokenType, String> {
         "function" => Ok(TokenType::Function),
         "return" => Ok(TokenType::Return),
         "subroutine" => Ok(TokenType::Subroutine),
+        "call" => Ok(TokenType::Call),
         "stop" => Ok(TokenType::Stop),
         "goto" => Ok(TokenType::Goto),
         "write" => Ok(TokenType::Write),

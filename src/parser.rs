@@ -150,6 +150,10 @@ pub enum Command {
              stride: Option<Expr>,
              body: Vec<Statement>,
              terminal: Box<Statement>},
+    CallSubroutine {
+        subroutine: Expr, // identifier
+        args: Vec<Expr>
+    },
     Illegal // should never be reached
 }
     
@@ -828,6 +832,45 @@ impl Parser {
         
         return self.illegal_statement(label);
     }
+
+    fn call_subroutine(&mut self, label: Option<i32>) -> Statement {
+        self.consume(TokenType::Call, "subroutine call expected 'CALL'");
+        let line = self.line;
+        let subroutine: Expr;
+        let token = self.advance();
+        match token.token_type {
+            TokenType::Identifier(v) => subroutine = Expr::Variable(v.into_iter().collect()),
+            other => panic!("Line {}: Calling subroutine expected subroutine name, found {:?}",
+                            token.line,
+                            other),
+        }
+
+        self.consume(TokenType::LeftParen,
+                     "Expected '(' after subroutine name in call statement");
+
+        let mut args = Vec::<Expr>::with_capacity(32);
+        loop {
+            if let Some(token) = self.peek() {
+                match token.token_type {
+                    TokenType::RightParen => break,
+                    TokenType::Comma => { _ = self.advance(); },
+                    _ => {},
+                }
+            }
+            if self.is_finished() {
+                panic!("Line {line}: Terminated unexpectedly while parsing subroutine call");
+            }
+            args.push(self.expr());
+        }
+        args.shrink_to_fit();
+        return Statement {
+            label: label,
+            command: Command::CallSubroutine {
+                subroutine: subroutine,
+                args: args,
+            }
+        };
+    }
     
     /*
     requires: start of statement
@@ -901,6 +944,7 @@ impl Parser {
                 TokenType::Read => return self.read(label),
                 TokenType::Do => return self.block_do_construct(label),
                 TokenType::If => return self.if_construct(label),
+                TokenType::Call => return self.call_subroutine(label),
                 _ => {
                     eprintln!("Parser::statement() illegal statement starting line {} with Token: #{:?}",
                               self.scanner.line_number(),
@@ -1249,6 +1293,53 @@ mod tests {
                 let actual = parser.statement();
                 assert_eq!($expected, actual);
             }
+        }
+
+        #[test]
+        fn call_subroutine_with_two_args() {
+            let mut args = Vec::<Expr>::with_capacity(1);
+            args.push(Expr::Variable(String::from("X")));
+            args.push(Expr::Binary(Box::new(Expr::Variable(String::from("X"))),
+                                   BinOp::Plus,
+                                   Box::new(Expr::Variable(String::from("Y")))));
+            let expected = Statement {
+                label: None,
+                command: Command::CallSubroutine{
+                    subroutine: Expr::Variable(String::from("mySubroutine")),
+                    args: args,
+                },
+            };
+            should_parse_stmt!("      CALL mySubroutine(X, X+Y)",
+                               expected);
+        }
+
+        #[test]
+        fn call_subroutine_with_one_args() {
+            let mut args = Vec::<Expr>::with_capacity(1);
+            args.push(Expr::Variable(String::from("X")));
+            let expected = Statement {
+                label: None,
+                command: Command::CallSubroutine{
+                    subroutine: Expr::Variable(String::from("mySubroutine")),
+                    args: args,
+                },
+            };
+            should_parse_stmt!("      CALL mySubroutine(X)",
+                               expected);
+        }
+
+        #[test]
+        fn call_subroutine_without_args() {
+            let mut args = Vec::<Expr>::new();
+            let expected = Statement {
+                label: None,
+                command: Command::CallSubroutine{
+                    subroutine: Expr::Variable(String::from("mySubroutine")),
+                    args: args,
+                },
+            };
+            should_parse_stmt!("      CALL mySubroutine()",
+                               expected);
         }
 
         #[test]

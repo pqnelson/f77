@@ -12,9 +12,9 @@ Right now, here's the progress:
     - [X] Read and write statements
     - [X] If statement
     - [X] do-loop
-    - [ ] Assignment
+    - [X] Subroutine call statement
     - [ ] Function call statement
-    - [ ] Subroutine call statement
+    - [ ] Assignment
   - [ ] Program unit parser (for the main program, functions, subroutines)
 - [ ] Type checking
 - [ ] Code generation
