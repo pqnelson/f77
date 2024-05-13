@@ -301,10 +301,15 @@ impl Lexer {
         return !self.peek().is_whitespace();
     }
 
+    /*
+    The Standard (3.2.2) says that "Columns 1 through 5 may contain a
+    statement label (3.4), or each of the columns 1 through 5 must
+    contain the blank character."
+     */
     // Try to parse the label for the line, if it is present; if not,
     // return None.
     fn try_label(&mut self) -> Option<TokenType> {
-        if 2 <= self.offset && self.offset <= 5 {
+        if 1 <= self.offset && self.offset <= 5 {
             let mut l: Vec<char> = Vec::new();
             let stop = 6 - self.offset;
             for _i in 0..stop {
