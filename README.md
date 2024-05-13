@@ -6,16 +6,11 @@ Right now, here's the progress:
 - [X] Lexer
 - [ ] Parser
   - [X] Expression parser
-  - [ ] Statement parser
-    - [X] GOTO
-    - [X] Continue
-    - [X] Read and write statements
-    - [X] If statement
-    - [X] do-loop
-    - [X] Subroutine call statement
-    - [ ] Function call statement
-    - [ ] Assignment
+  - [X] Statement parser
   - [ ] Program unit parser (for the main program, functions, subroutines)
+    - [ ] `program`
+    - [ ] `function`
+    - [ ] `subroutine`
 - [ ] Type checking
 - [ ] Code generation
 - [ ] Optimization

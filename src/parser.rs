@@ -7,14 +7,7 @@ use crate::lexer::{
 
 /*
 Current plans:
-1. Statements
-  - Simple statements (assignment?)
-  - If-then-else statements
-  - Labels and goto statements
-  - do-loops
-  - We should also note that the 77 Standard says, "a statement must
-    contain no more than 1320 characters." (3.3)
-2. Program Units
+1. Program Units
 
 I found it useful to write the grammar rules as comments before each
 function. This is a simple recursive descent parser, so production rules
@@ -153,6 +146,11 @@ pub enum Command {
     CallSubroutine {
         subroutine: Expr, // identifier
         args: Vec<Expr>
+    },
+    ExprStatement(Expr),
+    Assignment {
+        lhs: Expr,
+        rhs: Expr
     },
     Illegal // should never be reached
 }
@@ -871,6 +869,26 @@ impl Parser {
             }
         };
     }
+
+    fn assignment_or_expr(&mut self, label: Option<i32>) -> Statement {
+        let e = self.expr();
+        if self.check(TokenType::Equal) {
+            self.consume(TokenType::Equal, "");
+            let rhs = self.expr();
+            return Statement {
+                label: label,
+                command: Command::Assignment {
+                    lhs: e,
+                    rhs: rhs,
+                }
+            };
+        } else {
+            return Statement {
+                label: label,
+                command: Command::ExprStatement(e),
+            };
+        }
+    }
     
     /*
     requires: start of statement
@@ -946,11 +964,7 @@ impl Parser {
                 TokenType::If => return self.if_construct(label),
                 TokenType::Call => return self.call_subroutine(label),
                 _ => {
-                    eprintln!("Parser::statement() illegal statement starting line {} with Token: #{:?}",
-                              self.scanner.line_number(),
-                              self.peek());
-                    self.advance();
-                    return self.illegal_statement(label);
+                    return self.assignment_or_expr(label);
                 }
             }
         } else {
@@ -1293,6 +1307,21 @@ mod tests {
                 let actual = parser.statement();
                 assert_eq!($expected, actual);
             }
+        }
+
+        #[test]
+        fn assign_constant_to_var() {
+            let lhs = Expr::Variable(String::from("X"));
+            let rhs = Expr::Int64(51);
+            let expected = Statement {
+                label: None,
+                command: Command::Assignment {
+                    lhs: lhs,
+                    rhs: rhs,
+                },
+            };
+            should_parse_stmt!("      X = 51",
+                               expected);
         }
 
         #[test]
