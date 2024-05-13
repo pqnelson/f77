@@ -15,9 +15,16 @@ Right now, here's the progress:
     - [ ] do-loop
     - [ ] Function call statement
     - [ ] Subroutine call statement
-  - [ ] Program unit parser
+  - [ ] Program unit parser (for the main program, functions, subroutines)
+- [ ] Type checking
 - [ ] Code generation
-to add a parser, then code optimizer, and finally a code generator.
+- [ ] Optimization
+
+There's probably a lot I could be doing better, like my handling of
+ownership of lexemes in Tokens. I'm probably going to write an
+interpreter, and use it to profile performance on computing Fibonacci
+numbers (or whatever), before I spend a lot of time worrying about
+performance and memory management.
 
 # Subset of FORTRAN 77
 
