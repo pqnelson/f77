@@ -343,6 +343,64 @@ We have the following primitive logical operators which act on expressions:
 When comparing to arithmetic expressions $\ell$ and $r$, it compares
 $\ell-r$ to zero.
 
+\subsubsection{Grammar}
+The grammar for expressions suitable for a recursive descent parser,
+using pidgin EBNF:
+
+\begin{tabular}{rcl}
+$\langle$\textit{Expr}$\rangle$ & $::=$ & $\langle$\textit{level 5 expr}$\rangle$\\
+$\langle$\textit{level 1 expr}$\rangle$ & $::=$ & $\langle$\textit{primary}$\rangle$\\
+$\langle$\textit{primary}$\rangle$ & $::=$ & $\langle$\textit{number}$\rangle$\\
+  & $\mid$ & $\langle$\textit{named data reference}$\rangle$\\
+  & $\mid$ & $\langle$\textit{function call}$\rangle$\\
+\end{tabular}
+
+\begin{tabular}{rcl}
+  $\langle$\textit{level 2 expr}$\rangle$ & $::=$ &
+  $\langle$\textit{sign}$\rangle^{?}$ $\langle$\textit{add operand}$\rangle$ 
+  $\{\langle$\textit{add op}$\rangle$ $\langle$\textit{add operand}$\rangle\}$\\
+  $\langle$\textit{sign}$\rangle$ & $::=$ & \texttt{"+"} $\mid$ \texttt{"-"}\\
+  $\langle$\textit{add op}$\rangle$ & $::=$ & \texttt{"+"} $\mid$ \texttt{"-"}\\
+  $\langle$\textit{add operand}$\rangle$ & $::=$ & $\langle$\textit{mult operand}$\rangle$  $\{\langle$\textit{mult op}$\rangle$ $\langle$\textit{mult operand}$\rangle\}$\\
+  $\langle$\textit{mult op}$\rangle$ & $::=$ & \texttt{"*"} $\mid$ \texttt{"/"}\\
+  $\langle$\textit{mult operand}$\rangle$ & $::=$ & $\langle$\textit{level 1 expr}$\rangle$ \\
+  & $\mid$ & $\langle$\textit{level 1 expr}$\rangle$ \texttt{"**"} $\langle$\textit{mult operand}$\rangle$\\
+\end{tabular}
+
+\begin{tabular}{rcl}
+  $\langle$\textit{level 3 expr}$\rangle$ & $::=$ & $\langle$\textit{level 2 expr}$\rangle$ $\{$\texttt{"//"} $\langle$\textit{level 2 expr}$\rangle\}$\\
+\end{tabular}
+
+\begin{tabular}{rcl}
+  $\langle$\textit{level 4 expr}$\rangle$ & $::=$ & $\langle$\textit{level 3 expr}$\rangle$ $\{\langle$\textit{rel. op}$\rangle$ $\langle$\textit{level 3 expr}$\rangle\}$\\
+  $\langle$\textit{rel. op}$\rangle$ & $::=$ & \texttt{".EQ."} $\mid$
+  \texttt{".NE."} $\mid$
+  \texttt{".LE."} $\mid$
+   \texttt{".LT."} $\mid$
+  \texttt{".GE."} $\mid$
+   \texttt{".GT."}\\
+\end{tabular}
+
+\begin{tabular}{rcl}
+  $\langle$\textit{level 5 expr}$\rangle$ & $::=$ & $\langle$\textit{equiv operand}$\rangle$ $\{\langle$\textit{equiv op}$\rangle$ $\langle$\textit{equiv operand}$\rangle\}$\\
+  $\langle$\textit{equiv op}$\rangle$ & $::=$ & \texttt{".EQV."} $\mid$ \texttt{".NEQV."}\\
+  $\langle$\textit{equiv operand}$\rangle$ & $::=$ & $\langle$\textit{or operand}$\rangle$
+  $\{$\texttt{".OR."} $\langle$\textit{or operand}$\rangle\}$\\
+  $\langle$\textit{or operand}$\rangle$ & $::=$ & $\langle$\textit{and operand}$\rangle$
+  $\{$\texttt{".AND."} $\langle$\textit{and operand}$\rangle\}$\\
+  $\langle$\textit{and operand}$\rangle$ & $::=$ & $\langle$\textit{level 4 expr}$\rangle$\\
+  & $\mid$ & \texttt{".NOT."} $\langle$\textit{level 4 expr}$\rangle$\\
+  %% & $\mid$ & $\langle$\textit{}$\rangle$\\
+  %% $\langle$\textit{}$\rangle$ & $::=$ & $\langle$\textit{}$\rangle$ \\
+  %% & $\mid$ & $\langle$\textit{}$\rangle$\\
+\end{tabular}
+
+\medbreak
+Technically, this breaks compatibility with the Standard, since it will
+parse, e.g., \texttt{X + Y + Z} as 
+as \texttt{X + (Y + Z)} but the Standard specifically states it should
+be equivalent to \texttt{(X + Y) + Z}.
+
 \subsection{Functions}
 We can define functions by writing something like
 
