@@ -134,10 +134,19 @@ pub enum Command {
     Goto(i32),
     Write(Vec<Expr>),
     Read(Vec<Expr>),
+    IfBlock {test: Expr,
+             true_branch: Vec<Statement>,
+             false_branch: Vec<Statement>},
+    ArithIf {test: Expr,
+             negative: i32,
+             zero: i32,
+             positive: i32},
+    IfStatement {test: Expr,
+                 true_branch: Box::<Statement>},
     Illegal // should never be reached
 }
 
-// 6 digit label <= (10^6) - 1 < 20^19
+// 5 digit label with values <= (10^5) - 1 <= 0b11000011010011111 < 2^17
 #[derive(PartialEq, Debug)]
 pub struct Statement {
     label: Option<i32>,
@@ -147,7 +156,7 @@ pub struct Statement {
 pub struct Parser {
     scanner: Lexer,
     current: Option<Token>,
-    continuation_count: u8,
+    continuation_count: i16,
     line: usize,
     is_panicking: bool,
 }
@@ -167,27 +176,36 @@ must not have more than 19 continuation lines." (3.3.2.4)
 Free-form F90 extends this to 39 lines (see section 3.3.1.4 of the
 Fortran 90 Standard).
 */
-pub const MAX_CONTINUATIONS : u8 = 19;
+pub const MAX_CONTINUATIONS : i16 = 19;
 
 impl Parser {
     pub fn new(scanner: Lexer) -> Self {
         Self {
             scanner: scanner,
             current: None,
-            continuation_count: 0,
+            continuation_count: -1,
             line: 0,
             is_panicking: false,
         }
     }
 
-    // to be invoked in `statement()`
+    /*
+    Invoked in `statement()`
+
+    Continuation count is negative for "initial lines" (i.e., new
+    statements).
+     */
     fn reset_continuation_count(&mut self) {
-        self.continuation_count = 0;
+        self.continuation_count = -1;
         self.line = self.scanner.line_number();
     }
 
     fn inc_continuation_count(&mut self) {
-        self.continuation_count += 1;
+        if self.continuation_count < 0 {
+            self.continuation_count = 1;
+        } else {
+            self.continuation_count += 1;
+        }
         if self.continuation_count > MAX_CONTINUATIONS {
             // I am too nice to throw an error here, a warning suffices.
             eprintln!("Warning: found {} continuations as of line {}",
@@ -220,7 +238,7 @@ impl Parser {
             continues = true;
         }
         if t.line != self.line {
-            if continues || 0 == self.line {
+            if continues || self.continuation_count < 0 {
                 self.line = t.line;
             } else {
                 panic!("Line continuation needed to start line {}",
@@ -280,6 +298,17 @@ impl Parser {
         }
     }
 
+    /*
+    The next statement is determined by finding the next "initial line".
+    This is the term the Fortran 77 Standard uses for the start of a
+    statement:
+
+    > 3.2.2  Initial Line.  An initial line is any line  that
+    > is  not a comment line and contains the character blank
+    > or the digit 0 in column 6.  Columns 1  through  5  may
+    > contain a statement label (3.4), or each of the columns
+    > 1 through 5 must contain the character blank.
+     */
     fn is_at_next_statement(&mut self) -> bool {
         if let Some(token) = self.peek() {
             match token.token_type {
@@ -292,6 +321,8 @@ impl Parser {
     }
 
     /*
+    Skips ahead to the next statement.
+    
     requires: self.is_panicking = true;
     assigns: self.current is updated until we're at the next statement;
     ensures: self.peek() is a label token or a new statement token
@@ -364,11 +395,20 @@ impl Parser {
             command: Command::Write(self.io_list()),
         };
     }
-    
+
+    /*
+    We only handle "unconditional GOTO" statement (11.1 of 77 Standard).
+
+    The grammar for unconditional goto statements which we support:
+    ```ebnf
+    (* R836 *)
+    goto-statement = "GOTO" label
+    ```
+     */
     fn goto_statement(&mut self, label: Option<i32>) -> Statement {
         assert!(TokenType::Goto == self.advance().token_type);
         let target: i32;
-        let t = self.next_token();
+        let t = self.advance();
         match t.token_type {
             TokenType::Integer(v) => {
                 target = v.iter().collect::<String>().parse::<i32>().unwrap();
@@ -385,17 +425,225 @@ impl Parser {
         };
     }
 
+    /*
+    The 77 Standard has:
+    ```ebnf
+    continue-statement = "continue"
+    ```
+     */
     fn continue_statement(&mut self, label: Option<i32>) -> Statement {
+        self.consume(TokenType::Continue,
+                     "Continue statement expected to, well, 'continue'");
+        return Statement {
+            label: label,
+            command: Command::Continue,
+        };
+    }
+
+    /*
+    If statements are one of the two control statements in Fortran 77,
+    and comes in three delicious flavours.
+    
+    # Arithmetic If Statement
+    
+    There are arithmetic `if` statements in Fortran 77 (11.4), which
+    looks like:
+
+    ```ebnf
+    arithmetic-if = "if" "(" scalar-numeric-expr ")" label "," label "," label
+    ```
+
+    It is executed by looking at `if(s) l1, l2, l3` and performs the
+    following:
+    - if `s < 0` then goto l1,
+    - else if s = 0 then goto l2,
+    - else if s > 0 then goto l3.
+
+    # Logical If Statements
+
+    A logical if statement (11.5) in Fortran 77 looks like:
+    
+    ```ebnf
+    (* R807 *)
+    logical-if-statement = "if" "(" scalar-logical-expr ")" statement;
+    ```
+
+    Here the `statement` is any executable statement except a do,
+    block-if, else-if, else, end-if, end, or another logical-if
+    statement.
+
+    Executation of logical-if statements are the same as:
+
+    ```fortran
+    if (test) statement
+    
+    ! syntactic sugar for
+
+    if (test) then
+        statement
+    else
+        continue
+    end if
+    ```
+
+    # Block-If Statements
+    This is discussed in the Fortran 77 Standard (11.6 et seq).
+    
+    The Fortran 90 Standard succinctly gives us the grammar for
+    if-statements, which we **intentionally modify** to omit the
+    `[if-name-construct]` labels.
+
+    ```ebnf
+    (* R802 *)
+    if-construct = if-then-statement newline
+                   block newline
+                   {else-if-statement newline block newline}
+                   [else-statement newline block newline]
+                   end-if-statement;
+    (* R803 *)
+    if-then-statement = "if" "(" scalar-logical-expr ")" "then";
+    (* R804 *)
+    else-if-statement = "else" "if" "(" scalar-logical-expr ")" "then";
+    (* R805 *)
+    else-statement = "else";
+    (* R806 *)
+    end-if-statement = "end" "if";
+    ```
+    We can represent this using a `Statement::IfElse` 
+     */
+    fn if_construct(&mut self, label: Option<i32>) -> Statement {
+        assert!(TokenType::If == self.advance().token_type);
+        self.consume(TokenType::LeftParen,
+                     "Expected '(' to start if statement.");
+        let test = self.expr();
+        self.consume(TokenType::RightParen,
+                     "Expected ')' to close test condition in if statement");
+        
         if let Some(token) = self.peek() {
-            assert!(TokenType::Continue == token.token_type);
-            self.advance();
-            return Statement {
-                label: label,
-                command: Command::Continue,
+            match token.token_type {
+                TokenType::Then => return self.block_if(label, test),
+                TokenType::Integer(_) => return self.arithmetic_if(label, test),
+                _ => return self.if_statement(label, test),
             };
         } else {
-            panic!("parser: continue statement has the current token is NONE?");
+            panic!("Line {}: Unexpected termination of incomplete if statement",
+                   self.line);
         }
+        return self.illegal_statement(label);
+    }
+
+    fn end_if(&mut self, label: Option<i32>, test: Expr, true_branch: Vec<Statement>, false_branch: Vec<Statement>) -> Statement {
+        if self.check(TokenType::End) {
+            self.advance();
+            self.consume(TokenType::If,
+                         "If statement terminated by 'end', expected 'end if'");
+            return Statement {
+                label: label,
+                command: Command::IfBlock {
+                    test: test,
+                    true_branch: true_branch,
+                    false_branch: false_branch,
+                },
+            };
+        } else if self.check(TokenType::EndIf) {
+            return Statement {
+                label: label,
+                command: Command::IfBlock {
+                    test: test,
+                    true_branch: true_branch,
+                    false_branch: false_branch,
+                },
+            };
+        } else {
+            return self.illegal_statement(label);
+        }
+    }
+
+    fn block_if(&mut self, label: Option<i32>, test: Expr) -> Statement {
+        assert!(TokenType::Then == self.advance().token_type);
+        let mut true_branch = Vec::<Statement>::with_capacity(32);
+        loop {
+            true_branch.push(self.statement());
+            if self.matches(&[TokenType::Else, TokenType::End,
+                              TokenType::EndIf]) {
+                break;
+            }
+        }
+        true_branch.shrink_to_fit();
+        if self.check(TokenType::Else) {
+            self.consume(TokenType::Else, "");
+            if self.check(TokenType::If) {
+                // else if ...
+                let else_if: Statement = self.if_construct(None);
+                return Statement {
+                    label: label,
+                    command: Command::IfBlock {
+                        test: test,
+                        true_branch: true_branch,
+                        false_branch: vec![else_if],
+                    },
+                };
+            } else {
+                let mut false_branch = Vec::<Statement>::with_capacity(32);
+                loop {
+                    false_branch.push(self.statement());
+                    if self.matches(&[TokenType::End, TokenType::EndIf]) {
+                        break;
+                    }
+                }
+                false_branch.shrink_to_fit();
+                return self.end_if(label, test, true_branch, false_branch);
+            }
+        } else {
+            return self.end_if(label, test, true_branch, Vec::<Statement>::new());
+        }
+    }
+
+    /*
+    Note that Fortran 90 does not appear to have arithmetic-if
+    statements.
+    
+    ```ebnf
+    arithmetic_if = [label] "if (" test ")" label "," label "," label;
+    ```
+     */
+    fn arithmetic_if(&mut self, label: Option<i32>, test: Expr) -> Statement {
+        fn get_label(this: &mut Parser, case_name: &str) -> i32 {
+            let token = this.advance();
+            match token.token_type {
+                TokenType::Integer(v) => return v.iter().collect::<String>().parse::<i32>().unwrap(),
+                _ => panic!("Arithmetic-if expected label for {} test, found {}",
+                            case_name, token),
+            }
+        }
+        let negative = get_label(self, "negative");
+        self.consume(TokenType::Comma,
+                     "Arithmetic-if expects comma separating labels");
+        let zero = get_label(self, "negative");
+        self.consume(TokenType::Comma,
+                     "Arithmetic-if expects comma separating labels");
+        let positive = get_label(self, "negative");
+        return Statement {
+            label: label,
+            command: Command::ArithIf {
+                test: test,
+                negative: negative,
+                zero: zero,
+                positive: positive,
+            },
+        };
+    }
+
+    /*
+    ```ebnf
+    if_statement = "if (" logical-scalar-expr ")" statement;
+    */
+    fn if_statement(&mut self, label: Option<i32>, test: Expr) -> Statement {
+        return Statement {
+            label: label,
+            command: Command::IfStatement {test: test,
+                                           true_branch: Box::new(self.statement())},
+        };
     }
     
     /*
@@ -416,8 +664,11 @@ impl Parser {
                     if 0 == value {
                         return None;
                     } else {
+                        return Some(value);
+                        /*
                         let label = Some(value);
                         return label;
+                        */
                     }
                 },
                 _ => return None,
@@ -466,7 +717,7 @@ impl Parser {
                 TokenType::Write => return self.write(label),
                 TokenType::Read => return self.read(label),
                 TokenType::Do => return self.illegal_statement(label),
-                TokenType::If => return self.illegal_statement(label),
+                TokenType::If => return self.if_construct(label),
                 _ => {
                     eprintln!("Parser::statement() illegal statement starting line {} with Token: #{:?}",
                               self.scanner.line_number(),
@@ -815,6 +1066,173 @@ mod tests {
                 let actual = parser.statement();
                 assert_eq!($expected, actual);
             }
+        }
+
+        #[test]
+        fn if_block_statement() {
+            let test = Expr::Binary(Box::new(Expr::Variable(String::from("X"))),
+                                    BinOp::Eq,
+                                    Box::new(Expr::Variable(String::from("Y"))));
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("X")));
+            args.shrink_to_fit();
+            let mut true_branch = vec!(Statement {
+                label: None,
+                command: Command::Write(args),
+            });
+            true_branch.shrink_to_fit();
+            let expected = Statement {
+                label: Some(10 as i32),
+                command: Command::IfBlock {
+                    test: test,
+                    true_branch: true_branch,
+                    false_branch: Vec::<Statement>::new(),
+                },
+            };
+            should_parse_stmt!(["  10  IF (X.EQ.Y) THEN",
+                                "      WRITE (*,*) X",
+                                "      END IF",
+                                ].join("\n"),
+                               expected);
+        }
+
+        #[test]
+        fn if_else_block_statement() {
+            let test = Expr::Binary(Box::new(Expr::Variable(String::from("X"))),
+                                    BinOp::Eq,
+                                    Box::new(Expr::Variable(String::from("Y"))));
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("X")));
+            args.shrink_to_fit();
+            let mut true_branch = vec!(Statement {
+                label: None,
+                command: Command::Write(args),
+            });
+            true_branch.shrink_to_fit();
+
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("Y")));
+            args.shrink_to_fit();
+            let mut false_branch = vec!(Statement {
+                label: None,
+                command: Command::Write(args),
+            });
+            false_branch.shrink_to_fit();
+            
+            let expected = Statement {
+                label: Some(10 as i32),
+                command: Command::IfBlock {
+                    test: test,
+                    true_branch: true_branch,
+                    false_branch: false_branch,
+                },
+            };
+            should_parse_stmt!(["  10  IF (X.EQ.Y) THEN",
+                                "      WRITE (*,*) X",
+                                "      ELSE",
+                                "      WRITE (*,*) Y",
+                                "      END IF",
+                                ].join("\n"),
+                               expected);
+        }
+
+        #[test]
+        fn if_elseif_else_block_statement() {
+            let test = Expr::Binary(Box::new(Expr::Variable(String::from("X"))),
+                                    BinOp::Eq,
+                                    Box::new(Expr::Variable(String::from("Y"))));
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("X")));
+            args.shrink_to_fit();
+            let mut true_branch = vec!(Statement {
+                label: None,
+                command: Command::Write(args),
+            });
+            true_branch.shrink_to_fit();
+            // else if branch
+            // else if true subranch
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("Y")));
+            args.shrink_to_fit();
+            let mut else_if_true_branch = vec!(Statement {
+                label: None,
+                command: Command::Write(args),
+            });
+            else_if_true_branch.shrink_to_fit();
+            // else if false subbranch
+            let mut args = Vec::<Expr>::new();
+            args.push(Expr::Variable(String::from("Z")));
+            args.shrink_to_fit();
+            let mut else_if_false_branch = vec!(Statement {
+                label: None,
+                command: Command::Write(args),
+            });
+            else_if_false_branch.shrink_to_fit();
+            let else_test = Expr::Binary(Box::new(Expr::Variable(String::from("Y"))),
+                                    BinOp::Gt,
+                                    Box::new(Expr::Variable(String::from("Z"))));
+            let mut else_if_branch = vec!(Statement {
+                label: None,
+                command: Command::IfBlock {
+                    test: else_test,
+                    true_branch: else_if_true_branch,
+                    false_branch: else_if_false_branch
+                }
+            });
+            else_if_branch.shrink_to_fit();
+            
+            let expected = Statement {
+                label: Some(10 as i32),
+                command: Command::IfBlock {
+                    test: test,
+                    true_branch: true_branch,
+                    false_branch: else_if_branch,
+                },
+            };
+            should_parse_stmt!(["  10  IF (X.EQ.Y) THEN",
+                                "      WRITE (*,*) X",
+                                "      ELSE IF (Y.GT.Z) THEN",
+                                "      WRITE (*,*) Y",
+                                "      ELSE",
+                                "      WRITE (*,*) Z",
+                                "      END IF",
+                                ].join("\n"),
+                               expected);
+        }
+
+        #[test]
+        fn labeled_if_statement() {
+            let test = Expr::Binary(Box::new(Expr::Variable(String::from("X"))),
+                                    BinOp::Eq,
+                                    Box::new(Expr::Variable(String::from("Y"))));
+            let expected = Statement {
+                label: Some(10 as i32),
+                command: Command::IfStatement {
+                    test: test,
+                    true_branch: Box::new(Statement{
+                        label: None,
+                        command: Command::Goto(300),
+                    }),
+                },
+            };
+            should_parse_stmt!("  10  IF (X.EQ.Y) GOTO 300",
+                               expected);
+        }
+
+        #[test]
+        fn labeled_arith_if_example() {
+            let test = Expr::Variable(String::from("X"));
+            let expected = Statement {
+                label: Some(10 as i32),
+                command: Command::ArithIf {
+                    test: test,
+                    negative: 30,
+                    zero: 40,
+                    positive: 100,
+                },
+            };
+            should_parse_stmt!("  10  IF (X) 30, 40, 100",
+                               expected);
         }
 
         #[test]
