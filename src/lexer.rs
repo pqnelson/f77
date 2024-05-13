@@ -10,10 +10,10 @@ pub enum BaseType {
 impl fmt::Display for BaseType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            BaseType::Integer => return write!(f, "INTEGER"),
-            BaseType::Real => return write!(f, "REAL"),
-            BaseType::Character => return write!(f, "CHARACTER"),
-            BaseType::Logical => return write!(f, "LOGICAL"),
+            BaseType::Integer => write!(f, "INTEGER"),
+            BaseType::Real => write!(f, "REAL"),
+            BaseType::Character => write!(f, "CHARACTER"),
+            BaseType::Logical => write!(f, "LOGICAL"),
         }
     }
 }
@@ -63,17 +63,11 @@ pub enum TokenType {
 
 impl TokenType {
     pub fn is_continuation(&mut self) -> bool {
-        match self {
-            TokenType::Continuation(_) => return true,
-            _ => return false,
-        }
+        matches!(self, TokenType::Continuation(_))
     }
     
     pub fn is_label(&mut self) -> bool {
-        match self {
-            TokenType::Label(_) => return true,
-            _ => return false,
-        }
+        matches!(self, TokenType::Label(_))
     }
 }
 
@@ -81,19 +75,19 @@ impl fmt::Display for TokenType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             // single-character tokens
-            TokenType::LeftParen => return write!(f, "("),
-            TokenType::RightParen => return write!(f, ")"),
-            TokenType::Comma => return write!(f, ","),
-            TokenType::Colon => return write!(f, ":"),
-            TokenType::Minus => return write!(f, "-"),
-            TokenType::Plus => return write!(f, "+"),
-            TokenType::Slash => return write!(f, "/"),
-            TokenType::Concatenation => return write!(f, "//"), // i.e., "//"
-            TokenType::Star => return write!(f, "*"),
-            TokenType::Pow => return write!(f, "**"), // "**"
-            TokenType::Equal => return write!(f, "="),
+            TokenType::LeftParen => write!(f, "("),
+            TokenType::RightParen => write!(f, ")"),
+            TokenType::Comma => write!(f, ","),
+            TokenType::Colon => write!(f, ":"),
+            TokenType::Minus => write!(f, "-"),
+            TokenType::Plus => write!(f, "+"),
+            TokenType::Slash => write!(f, "/"),
+            TokenType::Concatenation => write!(f, "//"), // i.e., "//"
+            TokenType::Star => write!(f, "*"),
+            TokenType::Pow => write!(f, "**"), // "**"
+            TokenType::Equal => write!(f, "="),
 
-            TokenType::Continuation(c) => return write!(f, "{}", c),
+            TokenType::Continuation(c) => write!(f, "{}", c),
     
             // literals
             TokenType::Identifier(i) |
@@ -102,43 +96,43 @@ impl fmt::Display for TokenType {
             TokenType::Float(i) |
             TokenType::String(i) => {
                 let s: String = i.iter().collect();
-                return write!(f, "{}", s);
+                write!(f, "{}", s)
             },
-            TokenType::Type(base) => return write!(f, "{}", base),
+            TokenType::Type(base) => write!(f, "{}", base),
     
             // keywords
-            TokenType::Program => return write!(f, "program"),
-            TokenType::If => return write!(f, "if"),
-            TokenType::Then => return write!(f, "then"),
-            TokenType::Else => return write!(f, "else"),
-            TokenType::EndIf => return write!(f, "endif"),
-            TokenType::Do => return write!(f, "do"),
-            TokenType::Continue => return write!(f, "continue"),
-            TokenType::Call => return write!(f, "call"),
-            TokenType::True => return write!(f, ".TRUE."),
-            TokenType::False => return write!(f, ".FALSE."),
-            TokenType::Stop => return write!(f, "STOP"),
-            TokenType::End => return write!(f, "end"),
-            TokenType::Function => return write!(f, "function"),
-            TokenType::Return => return write!(f, "return"),
-            TokenType::Subroutine => return write!(f, "subroutine"),
-            TokenType::Less => return write!(f, ".LT."),
-            TokenType::Leq => return write!(f, ".LE."),
-            TokenType::Eq => return write!(f, ".EQ."),
-            TokenType::NotEqual => return write!(f, ".NEQ."),
-            TokenType::Greater => return write!(f, ".GT."),
-            TokenType::Geq => return write!(f, ".GEQ."),
-            TokenType::Not => return write!(f, ".NOT."),
-            TokenType::And => return write!(f, ".AND."),
-            TokenType::Or => return write!(f, ".OR."),
-            TokenType::Equiv => return write!(f, ".EQV."),
-            TokenType::NotEquiv => return write!(f, ".NEQV."),
-            TokenType::Xor => return write!(f, ".XOR."),
-            TokenType::Goto => return write!(f, "Goto"),
-            TokenType::Write => return write!(f, "Write"),
-            TokenType::Read => return write!(f, "Read"),
-            TokenType::Illegal => return write!(f, "Illegal"),
-            TokenType::Eof => return write!(f, "Eof"),
+            TokenType::Program => write!(f, "program"),
+            TokenType::If => write!(f, "if"),
+            TokenType::Then => write!(f, "then"),
+            TokenType::Else => write!(f, "else"),
+            TokenType::EndIf => write!(f, "endif"),
+            TokenType::Do => write!(f, "do"),
+            TokenType::Continue => write!(f, "continue"),
+            TokenType::Call => write!(f, "call"),
+            TokenType::True => write!(f, ".TRUE."),
+            TokenType::False => write!(f, ".FALSE."),
+            TokenType::Stop => write!(f, "STOP"),
+            TokenType::End => write!(f, "end"),
+            TokenType::Function => write!(f, "function"),
+            TokenType::Return => write!(f, "return"),
+            TokenType::Subroutine => write!(f, "subroutine"),
+            TokenType::Less => write!(f, ".LT."),
+            TokenType::Leq => write!(f, ".LE."),
+            TokenType::Eq => write!(f, ".EQ."),
+            TokenType::NotEqual => write!(f, ".NEQ."),
+            TokenType::Greater => write!(f, ".GT."),
+            TokenType::Geq => write!(f, ".GEQ."),
+            TokenType::Not => write!(f, ".NOT."),
+            TokenType::And => write!(f, ".AND."),
+            TokenType::Or => write!(f, ".OR."),
+            TokenType::Equiv => write!(f, ".EQV."),
+            TokenType::NotEquiv => write!(f, ".NEQV."),
+            TokenType::Xor => write!(f, ".XOR."),
+            TokenType::Goto => write!(f, "Goto"),
+            TokenType::Write => write!(f, "Write"),
+            TokenType::Read => write!(f, "Read"),
+            TokenType::Illegal => write!(f, "Illegal"),
+            TokenType::Eof => write!(f, "Eof"),
         }
     }
 }
@@ -151,7 +145,7 @@ pub struct Token {
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "{}", self.token_type);
+        write!(f, "{}", self.token_type)
     }
 }
 
@@ -165,8 +159,8 @@ impl Token {
     }
 }
 
-fn get_keyword_token(ident: &Vec<char>) -> Result<TokenType, String> {
-    let identifier: String = ident.into_iter().collect();
+fn get_keyword_token(ident: &[char]) -> Result<TokenType, String> {
+    let identifier: String = ident.iter().collect();
     match &identifier.to_lowercase()[..] {
         "program" => Ok(TokenType::Program),
         "do" => Ok(TokenType::Do),
@@ -218,40 +212,39 @@ pub struct Lexer {
 }
 
 fn is_letter(ch: char) -> bool {
-    return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z';
+    ch.is_ascii_lowercase() || ch.is_ascii_uppercase()
 }
 
 fn implies(antecedent: bool, consequent: bool) -> bool {
-    return !antecedent || consequent;
+    !antecedent || consequent
 }
 
 fn is_id_start(c: char) -> bool {
-    return c.is_alphabetic() || '.' == c;
+    c.is_alphabetic() || '.' == c
 }
 
 fn is_identifier(c: char) -> bool {
-    return c.is_alphanumeric();
+    c.is_alphanumeric()
 }
 
 fn is_sign(c: char) -> bool {
-    return '-' == c || '+' == c;
+    '-' == c || '+' == c
 }
 
 fn is_exponent(c: char) -> bool {
-    return 'e' == c || 'd' == c || 'E' == c || 'D' == c;
+    'e' == c || 'd' == c || 'E' == c || 'D' == c
 }
 
 impl Lexer {
     // INVARIANT: 1 <= Lexer.offset 
     pub fn new(input : Vec<char>) -> Self {
-        let c;
-        if input.is_empty() {
-            c = '\0';
+        let c = if input.is_empty() {
+            '\0'
         } else {
-            c = input[0];
-        }
+            input[0]
+        };
         Self {
-            input: input,
+            input,
             position: 0,
             read_position: 0,
             ch: c,
@@ -261,11 +254,11 @@ impl Lexer {
     }
 
     pub fn line_number(&mut self) -> usize {
-        return self.line;
+        self.line
     }
     
     pub fn is_finished(&mut self) -> bool {
-        return self.read_position >= self.input.len();
+        self.read_position >= self.input.len()
     }
     
     pub fn read_char(&mut self) {
@@ -287,12 +280,12 @@ impl Lexer {
     }
 
     // bool is returned so we can continue skipping comments and whitespace
-    fn skip_whitespace(&mut self) -> bool {
+    fn skipping_whitespace(&mut self) -> bool {
         let result = self.peek().is_whitespace();
         while self.peek().is_whitespace() {
             self.read_char();
         }
-        return result;
+        result
 
     }
 
@@ -300,7 +293,7 @@ impl Lexer {
     // but we are generous in accepting comments...
     fn is_comment(&mut self) -> bool {
         if 1 != self.offset { return false; }
-        return !self.peek().is_whitespace();
+        !self.peek().is_whitespace()
     }
 
     /*
@@ -323,11 +316,11 @@ impl Lexer {
                 self.read_char();
             }
         }
-        return None;
+        None
     }
 
     fn is_continuation(&mut self) -> bool {
-        return 6 == self.offset && !self.input[self.position].is_whitespace();
+        6 == self.offset && !self.input[self.position].is_whitespace()
     }
 
     fn skip_rest_of_line(&mut self) {
@@ -339,26 +332,26 @@ impl Lexer {
     }
 
     // bool is returned so we can continue skipping comments and whitespace
-    fn skip_comments(&mut self) -> bool {
-        while self.is_comment() {
+    fn skipping_comment(&mut self) -> bool {
+        if self.is_comment() {
             self.skip_rest_of_line();
             return true;
         }
-        return false;
+        false
     }
 
     fn peek(&mut self) -> char {
         if self.read_position >= self.input.len() {
             return '\0';
         }
-        return self.input[self.read_position];
+        self.input[self.read_position]
     }
 
     fn peek_next(&mut self) -> char {
         if self.read_position + 1 >= self.input.len() {
             return '\0';
         }
-        return self.input[self.read_position + 1];
+        self.input[self.read_position + 1]
     }
 
     // 4.3 of 77 Standard for Integer constants
@@ -401,9 +394,9 @@ impl Lexer {
                 }
             }
             
-            return TokenType::Float(self.input[position..self.read_position].to_vec());
+            TokenType::Float(self.input[position..self.read_position].to_vec())
         } else {
-            return TokenType::Integer(self.input[position..self.read_position].to_vec());
+            TokenType::Integer(self.input[position..self.read_position].to_vec())
         }
     }
 
@@ -421,7 +414,7 @@ impl Lexer {
         // starts with a dot, ends with a dot
         assert!(implies('.' == self.input[position],
                         '.' == self.input[self.read_position-1]));
-        return self.input[position..self.read_position].to_vec()
+        self.input[position..self.read_position].to_vec()
     }
 
     // TODO: consider a command-line option supporting lexing C-like strings?
@@ -454,11 +447,11 @@ impl Lexer {
         // assert!('\'' == self.ch);
         // assert!('\'' != self.peek());
         let value = self.input[start+1..self.read_position-1].to_vec();
-        return TokenType::String(value);
+        TokenType::String(value)
     }
     
     pub fn next_token_type(&mut self) -> TokenType {
-        while self.skip_comments() || self.skip_whitespace() {
+        while self.skipping_comment() || self.skipping_whitespace() {
             continue;
         }
         self.position = self.read_position;
@@ -468,11 +461,9 @@ impl Lexer {
             tok = TokenType::Continuation(self.ch);
             return tok;
         }
+
+        if let Some(v) = self.try_label() { return v; }
         
-        match self.try_label() {
-            Some(v) => { return v; },
-            None => {},
-        }
         self.read_char();
         println!("next_token_type = {}", self.ch);
         match self.ch {
@@ -550,7 +541,7 @@ impl Lexer {
     pub fn next_token(&mut self) -> Token {
         let t: TokenType = self.next_token_type();
         let l = self.line;
-        return Token::new(t, l);
+        Token::new(t, l)
     }
 }
 

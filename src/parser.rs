@@ -1,10 +1,9 @@
 use crate::lexer::{
-    BaseType,
     TokenType,
     Token,
     Lexer
 };
-use crate::parse_tree::parse_tree::*;
+use crate::parse_tree::*;
 
 /*
 Current plans:
@@ -48,7 +47,7 @@ pub const MAX_CONTINUATIONS : i16 = 19;
 impl Parser {
     pub fn new(scanner: Lexer) -> Self {
         Self {
-            scanner: scanner,
+            scanner,
             current: None,
             continuation_count: -1,
             line: 0,
@@ -83,7 +82,7 @@ impl Parser {
     }
 
     fn is_finished(&mut self) -> bool {
-        return None == self.current && self.scanner.is_finished();
+        self.current.is_none() && self.scanner.is_finished()
     }
 
     /*
@@ -113,27 +112,27 @@ impl Parser {
                        t.line);
             }
         }
-        return t;
+        t
     }
 
-    fn populate_current(&mut self) -> () {
-        if None == self.current && !self.is_finished() {
+    fn populate_current(&mut self) {
+        if self.current.is_none() && !self.is_finished() {
             self.current = Some(self.next_token());
         }
     }
 
     fn peek(&mut self) -> &Option<Token> {
         self.populate_current();
-        return &self.current;
+        &self.current
     }
 
     fn advance(&mut self) -> Token {
         if let Some(v) = self.current.take() {
-            assert!(self.current == None);
-            return v;
+            assert!(self.current.is_none());
+            v
         } else {
-            assert!(self.current == None);
-            return self.next_token();
+            assert!(self.current.is_none());
+            self.next_token()
         }
     }
 
@@ -147,20 +146,19 @@ impl Parser {
                 },
             }
         }
-        return false;
+        false
     }
 
     fn check(&mut self, token_type: TokenType) -> bool {
         match self.peek() {
-            Some(v) => return v.token_type == token_type,
-            None => return false,
+            Some(v) => v.token_type == token_type,
+            None => false,
         }
     }
 
     fn consume(&mut self, expected: TokenType, msg: &str) {
         if self.check(expected) {
             self.advance();
-            return;
         } else {
             let token = self.advance();
             panic!("ERROR on Line {}: {}, found {token}", self.scanner.line_number(), msg);
@@ -180,12 +178,9 @@ impl Parser {
      */
     fn is_at_next_statement(&mut self) -> bool {
         if let Some(token) = self.peek() {
-            match token.token_type {
-                TokenType::Label(_) => return true,
-                _ => return false,
-            };
+            matches!(token.token_type, TokenType::Label(_))
         } else {
-            return self.is_finished();
+            self.is_finished()
         }
     }
 
@@ -218,7 +213,7 @@ impl Parser {
             args.push(self.expr());
         }
         args.shrink_to_fit();
-        return args;
+        args
     }
     
     /*
@@ -237,10 +232,10 @@ impl Parser {
                      "Expected dummy arg in READ statement's UNIT");
         self.consume(TokenType::RightParen,
                      "Expected right paren in READ statement's UNIT");
-        return Statement {
-            label: label,
+        Statement {
+            label,
             command: Command::Read(self.io_list()),
-        };
+        }
     }
     
     /*
@@ -259,10 +254,10 @@ impl Parser {
                      "Expected dummy arg in WRITE statement's UNIT");
         self.consume(TokenType::RightParen,
                      "Expected right paren in WRITE statement's UNIT");
-        return Statement {
-            label: label,
+        Statement {
+            label,
             command: Command::Write(self.io_list()),
-        };
+        }
     }
 
     /*
@@ -288,10 +283,10 @@ impl Parser {
                        other);
             },
         }
-        return Statement {
-            label: label,
+        Statement {
+            label,
             command: Command::Goto(target),
-        };
+        }
     }
 
     /*
@@ -303,10 +298,10 @@ impl Parser {
     fn continue_statement(&mut self, label: Option<i32>) -> Statement {
         self.consume(TokenType::Continue,
                      "Continue statement expected to, well, 'continue'");
-        return Statement {
-            label: label,
+        Statement {
+            label,
             command: Command::Continue,
-        };
+        }
     }
 
     /*
@@ -390,15 +385,15 @@ impl Parser {
         
         if let Some(token) = self.peek() {
             match token.token_type {
-                TokenType::Then => return self.block_if(label, test),
-                TokenType::Integer(_) => return self.arithmetic_if(label, test),
-                _ => return self.if_statement(label, test),
-            };
+                TokenType::Then => self.block_if(label, test),
+                TokenType::Integer(_) => self.arithmetic_if(label, test),
+                _ => self.if_statement(label, test),
+            }
         } else {
             panic!("Line {}: Unexpected termination of incomplete if statement",
                    self.line);
         }
-        return self.illegal_statement(label);
+        // self.illegal_statement(label)
     }
 
     fn end_if(&mut self, label: Option<i32>, test: Expr, true_branch: Vec<Statement>, false_branch: Vec<Statement>) -> Statement {
@@ -406,21 +401,21 @@ impl Parser {
             self.advance();
             self.consume(TokenType::If,
                          "If statement terminated by 'end', expected 'end if'");
-            return Statement {
-                label: label,
+            Statement {
+                label,
                 command: Command::IfBlock {
-                    test: test,
-                    true_branch: true_branch,
-                    false_branch: false_branch,
+                    test,
+                    true_branch,
+                    false_branch,
                 },
-            };
+            }
         } else if self.check(TokenType::EndIf) {
             return Statement {
-                label: label,
+                label,
                 command: Command::IfBlock {
-                    test: test,
-                    true_branch: true_branch,
-                    false_branch: false_branch,
+                    test,
+                    true_branch,
+                    false_branch,
                 },
             };
         } else {
@@ -444,14 +439,14 @@ impl Parser {
             if self.check(TokenType::If) {
                 // else if ...
                 let else_if: Statement = self.if_construct(None);
-                return Statement {
-                    label: label,
+                Statement {
+                    label,
                     command: Command::IfBlock {
-                        test: test,
-                        true_branch: true_branch,
+                        test,
+                        true_branch,
                         false_branch: vec![else_if],
                     },
-                };
+                }
             } else {
                 let mut false_branch = Vec::<Statement>::with_capacity(32);
                 loop {
@@ -461,10 +456,10 @@ impl Parser {
                     }
                 }
                 false_branch.shrink_to_fit();
-                return self.end_if(label, test, true_branch, false_branch);
+                self.end_if(label, test, true_branch, false_branch)
             }
         } else {
-            return self.end_if(label, test, true_branch, Vec::<Statement>::new());
+            self.end_if(label, test, true_branch, Vec::<Statement>::new())
         }
     }
 
@@ -492,15 +487,15 @@ impl Parser {
         self.consume(TokenType::Comma,
                      "Arithmetic-if expects comma separating labels");
         let positive = get_label(self, "negative");
-        return Statement {
-            label: label,
+        Statement {
+            label,
             command: Command::ArithIf {
-                test: test,
-                negative: negative,
-                zero: zero,
-                positive: positive,
+                test,
+                negative,
+                zero,
+                positive,
             },
-        };
+        }
     }
 
     /*
@@ -508,11 +503,11 @@ impl Parser {
     if_statement = "if (" logical-scalar-expr ")" statement;
     */
     fn if_statement(&mut self, label: Option<i32>, test: Expr) -> Statement {
-        return Statement {
-            label: label,
-            command: Command::IfStatement {test: test,
+        Statement {
+            label,
+            command: Command::IfStatement {test,
                                            true_branch: Box::new(self.statement())},
-        };
+        }
     }
 
     /*
@@ -542,10 +537,10 @@ impl Parser {
                 TokenType::Integer(v) => {
                     let end_label = v.iter().collect::<String>().parse::<i32>().unwrap();
                     self.advance();
-                    return self.label_do_statement(label, end_label);
+                    self.label_do_statement(label, end_label)
                 },
                 TokenType::Identifier(_) => {
-                    return self.nonlabel_do_statement(label);
+                    self.nonlabel_do_statement(label)
                 },
                 _ => {
                     panic!("DO statement on line {} expects either a label or a variable, found {:?}",
@@ -585,7 +580,7 @@ impl Parser {
         } else {
             panic!("Do-loop terminated unexpectedly in loop-control on line {}", line);
         }
-        return (var, start, stop, stride);
+        (var, start, stop, stride)
     }
 
     fn label_do_statement(&mut self, label: Option<i32>, target: i32) -> Statement {
@@ -610,18 +605,18 @@ impl Parser {
             do_block.push(statement);
         }
         do_block.shrink_to_fit();
-        return Statement {
-            label: label,
+        Statement {
+            label,
             command: Command::LabelDo {
                 target_label: target,
-                var: var,
-                start: start,
-                stop: stop,
-                stride: stride,
+                var,
+                start,
+                stop,
+                stride,
                 body: do_block,
                 terminal: Box::new(target_statement)
             },
-        };
+        }
     }
 
     /*
@@ -637,9 +632,9 @@ impl Parser {
                 if TokenType::End == token.token_type {
                     this.advance(); // eat the End
                     this.consume(TokenType::Do, "do-loop starting on line {start_line} terminated by END but not END DO");
-                    return true;
+                    true
                 } else {
-                    return false;
+                    false
                 }
             } else {
                 panic!("do-loop starting on line {} runaway", start_line);
@@ -663,33 +658,31 @@ impl Parser {
 
         do_block.shrink_to_fit();
 
-        return Statement {
-            label: label,
+        Statement {
+            label,
             command: Command::LabelDo {
                 target_label: -1,
-                var: var,
-                start: start,
-                stop: stop,
-                stride: stride,
+                var,
+                start,
+                stop,
+                stride,
                 body: do_block,
                 terminal: Box::new(terminal_statement)
             },
-        };
-        
-        return self.illegal_statement(label);
+        }
     }
 
     fn call_subroutine(&mut self, label: Option<i32>) -> Statement {
         self.consume(TokenType::Call, "subroutine call expected 'CALL'");
         let line = self.line;
-        let subroutine: Expr;
+        
         let token = self.advance();
-        match token.token_type {
-            TokenType::Identifier(v) => subroutine = Expr::Variable(v.into_iter().collect()),
+        let subroutine: Expr = match token.token_type {
+            TokenType::Identifier(v) => Expr::Variable(v.into_iter().collect()),
             other => panic!("Line {}: Calling subroutine expected subroutine name, found {:?}",
                             token.line,
                             other),
-        }
+        };
 
         self.consume(TokenType::LeftParen,
                      "Expected '(' after subroutine name in call statement");
@@ -709,13 +702,13 @@ impl Parser {
             args.push(self.expr());
         }
         args.shrink_to_fit();
-        return Statement {
-            label: label,
+        Statement {
+            label,
             command: Command::CallSubroutine {
-                subroutine: subroutine,
-                args: args,
+                subroutine,
+                args,
             }
-        };
+        }
     }
 
     fn assignment_or_expr(&mut self, label: Option<i32>) -> Statement {
@@ -723,18 +716,18 @@ impl Parser {
         if self.check(TokenType::Equal) {
             self.consume(TokenType::Equal, "");
             let rhs = self.expr();
-            return Statement {
-                label: label,
+            Statement {
+                label,
                 command: Command::Assignment {
                     lhs: e,
-                    rhs: rhs,
+                    rhs,
                 }
-            };
+            }
         } else {
-            return Statement {
-                label: label,
+            Statement {
+                label,
                 command: Command::ExprStatement(e),
-            };
+            }
         }
     }
     
@@ -754,27 +747,27 @@ impl Parser {
                     let value = v.iter().collect::<String>().parse::<i32>().unwrap();
                     self.advance();
                     if 0 == value {
-                        return None;
+                        None
                     } else {
-                        return Some(value);
+                        Some(value)
                         /*
                         let label = Some(value);
                         return label;
                         */
                     }
                 },
-                _ => return None,
-            };
+                _ => None,
+            }
         } else {
-            return None;
+            None
         }
     }
 
     fn illegal_statement(&mut self, label: Option<i32>) -> Statement {
-        return Statement {
-            label: label,
+        Statement {
+            label,
             command: Command::Illegal,
-        };
+        }
     }
     /*
     (* Section 11.5 of F77 says an action-statement is any statement
@@ -804,19 +797,19 @@ impl Parser {
         // assert!(!self.peek().token_type.is_label());
         if let Some(token) = self.peek() {
             match token.token_type {
-                TokenType::Goto => return self.goto_statement(label),
-                TokenType::Continue => return self.continue_statement(label),
-                TokenType::Write => return self.write(label),
-                TokenType::Read => return self.read(label),
-                TokenType::Do => return self.block_do_construct(label),
-                TokenType::If => return self.if_construct(label),
-                TokenType::Call => return self.call_subroutine(label),
+                TokenType::Goto => self.goto_statement(label),
+                TokenType::Continue => self.continue_statement(label),
+                TokenType::Write => self.write(label),
+                TokenType::Read => self.read(label),
+                TokenType::Do => self.block_do_construct(label),
+                TokenType::If => self.if_construct(label),
+                TokenType::Call => self.call_subroutine(label),
                 _ => {
-                    return self.assignment_or_expr(label);
+                    self.assignment_or_expr(label)
                 }
             }
         } else {
-            return self.illegal_statement(None);
+            self.illegal_statement(None)
         }
     }
     
@@ -825,8 +818,8 @@ impl Parser {
      ********************************************************** */
 
     pub fn expr(&mut self) -> Expr {
-        let e = self.level_5_expr();
-        return e;
+        
+        self.level_5_expr()
     }
 
     /*
@@ -840,7 +833,7 @@ impl Parser {
             let rhs = self.equiv_operand();
             e = Expr::Binary(Box::new(e), conjoin, Box::new(rhs));
         }
-        return e;
+        e
     }
 
     /*
@@ -853,7 +846,7 @@ impl Parser {
             let rhs = self.or_operand();
             e = Expr::Binary(Box::new(e), conjoin, Box::new(rhs));
         }
-        return e;
+        e
     }
 
     /*
@@ -866,7 +859,7 @@ impl Parser {
             let rhs = self.and_operand();
             e = Expr::Binary(Box::new(e), conjoin, Box::new(rhs));
         }
-        return e;
+        e
     }
 
     /*
@@ -876,9 +869,9 @@ impl Parser {
         if self.matches(&[TokenType::Not]) {
             let rator = token_to_unary_op(self.advance());
             let rand = self.level_4_expr();
-            return Expr::Unary(rator, Box::new(rand));
+            Expr::Unary(rator, Box::new(rand))
         } else {
-            return self.level_4_expr();
+            self.level_4_expr()
         }
     }
 
@@ -896,7 +889,7 @@ impl Parser {
             let rhs = self.level_3_expr();
             e = Expr::Binary(Box::new(e), operator, Box::new(rhs));
         }
-        return e;
+        e
     }
     
     /*
@@ -910,7 +903,7 @@ impl Parser {
             let rhs = self.level_2_expr();
             e = Expr::Binary(Box::new(e), operator, Box::new(rhs));
         }
-        return e;
+        e
     }
 
     // XXX: this is dangerous for a large number of exponentiations
@@ -926,7 +919,7 @@ impl Parser {
             self.current = None;
             return Expr::Binary(Box::new(b), BinOp::Power, Box::new(e));
         }
-        return b;
+        b
     }
 
     /*
@@ -941,7 +934,7 @@ impl Parser {
             let rhs = self.mult_operand();
             e = Expr::Binary(Box::new(e), binop, Box::new(rhs));
         }
-        return e;
+        e
     }
 
     /*
@@ -963,15 +956,15 @@ impl Parser {
             let rhs = self.add_operand();
             e = Expr::Binary(Box::new(e), operator, Box::new(rhs));
         }
-        return e;
+        e
     }
     
     /*
     level_1_expr ::= primary
      */
     fn level_1_expr(&mut self) -> Expr {
-        let e = self.primary();
-        return e;
+        
+        self.primary()
     }
 
     /*
@@ -979,8 +972,9 @@ impl Parser {
      */
     fn subscript(&mut self) -> Expr {
         // TODO: check that it's really an integer scalar quantity
-        return self.expr();
+        self.expr()
     }
+
     /*
     section_triplet_tail = ":" [expr] [":" expr]
     --- equivalently ---
@@ -989,7 +983,8 @@ impl Parser {
                          | ":" ":" expr
                          | ":" expr ":" expr
      */
-    fn section_triplet_tail(&mut self) -> Option<(Option<Box<Expr>>,Option<Box<Expr>>)> {
+    fn section_triplet_tail(&mut self) -> Option<(Option<Box<Expr>>,
+                                                  Option<Box<Expr>>)> {
         if !self.matches(&[TokenType::Colon]) {
             return None;
         }
@@ -1018,7 +1013,7 @@ impl Parser {
                 stride = None;
             }
         }
-        return Some((stop, stride));
+        Some((stop, stride))
     }
     
     /*
@@ -1030,19 +1025,19 @@ impl Parser {
         if self.matches(&[TokenType::Colon]) {
             if let Some((stop, stride)) = self.section_triplet_tail() {
                 // ":stop[:stride]" matched
-                return Expr::Section((None, stop, stride));
+                Expr::Section((None, stop, stride))
             } else {
                 // ":" matched
-                return Expr::Section((None, None, None));
+                Expr::Section((None, None, None))
             }
         } else { // section_subscript = subscript + stuff
             let e = self.subscript();
             if let Some((stop, stride)) = self.section_triplet_tail() {
                 // "e:stop[:stride]" matched
-                return Expr::Section((Some(Box::new(e)), stop, stride));
+                Expr::Section((Some(Box::new(e)), stop, stride))
             } else {
                 // subscript matched
-                return e;
+                e
             }
         }
     }
@@ -1054,10 +1049,7 @@ impl Parser {
         loop {
             let e = self.section_subscript();
             if !is_array_section {
-                match e {
-                    Expr::Section(_) => is_array_section = true,
-                    _ => {}
-                }
+                if let Expr::Section(_) = e { is_array_section = true }
             }
             args.push(e);
             if self.matches(&[TokenType::Comma]) {
@@ -1068,9 +1060,9 @@ impl Parser {
         }
         args.shrink_to_fit();
         if is_array_section {
-            return Expr::ArraySection(identifier, args);
+            Expr::ArraySection(identifier, args)
         } else {
-            return Expr::NamedDataRef(identifier, args);
+            Expr::NamedDataRef(identifier, args)
         }
         // it's an array, or a function reference, or an array slice
         // we do not know until we get more information
@@ -1103,7 +1095,6 @@ named_data_ref = identifier
         } else {
             panic!("This should never be reached! Expected an identifier, received {}", identifier);
         }
-        return Expr::ErrorExpr;
     }
 
     /*
@@ -1123,19 +1114,19 @@ named_data_ref = identifier
                 return Expr::Float64(f.iter().collect::<String>().parse::<f64>().unwrap());
             },
             TokenType::String(s) => {
-                return Expr::Character(s.to_vec());
+                Expr::Character(s.to_vec())
             },
             TokenType::Identifier(_) => {
-                return self.named_data_ref(token);
+                self.named_data_ref(token)
             },
             TokenType::LeftParen => {
                 let e = self.expr();
                 self.consume(TokenType::RightParen,
                              "Expected ')' after expression.");
-                return Expr::Grouping(Box::new(e));
+                Expr::Grouping(Box::new(e))
             },
             _ => {
-                return Expr::ErrorExpr;
+                Expr::ErrorExpr
             }
         }
     }
@@ -1164,8 +1155,8 @@ mod tests {
             let expected = Statement {
                 label: None,
                 command: Command::Assignment {
-                    lhs: lhs,
-                    rhs: rhs,
+                    lhs,
+                    rhs,
                 },
             };
             should_parse_stmt!("      X = 51",
@@ -1183,7 +1174,7 @@ mod tests {
                 label: None,
                 command: Command::CallSubroutine{
                     subroutine: Expr::Variable(String::from("mySubroutine")),
-                    args: args,
+                    args,
                 },
             };
             should_parse_stmt!("      CALL mySubroutine(X, X+Y)",
@@ -1198,7 +1189,7 @@ mod tests {
                 label: None,
                 command: Command::CallSubroutine{
                     subroutine: Expr::Variable(String::from("mySubroutine")),
-                    args: args,
+                    args,
                 },
             };
             should_parse_stmt!("      CALL mySubroutine(X)",
@@ -1207,12 +1198,12 @@ mod tests {
 
         #[test]
         fn call_subroutine_without_args() {
-            let mut args = Vec::<Expr>::new();
+            let args = Vec::<Expr>::new();
             let expected = Statement {
                 label: None,
                 command: Command::CallSubroutine{
                     subroutine: Expr::Variable(String::from("mySubroutine")),
-                    args: args,
+                    args,
                 },
             };
             should_parse_stmt!("      CALL mySubroutine()",
@@ -1366,10 +1357,10 @@ mod tests {
             });
             true_branch.shrink_to_fit();
             let expected = Statement {
-                label: Some(10 as i32),
+                label: Some(10_i32),
                 command: Command::IfBlock {
-                    test: test,
-                    true_branch: true_branch,
+                    test,
+                    true_branch,
                     false_branch: Vec::<Statement>::new(),
                 },
             };
@@ -1404,11 +1395,11 @@ mod tests {
             false_branch.shrink_to_fit();
             
             let expected = Statement {
-                label: Some(10 as i32),
+                label: Some(10_i32),
                 command: Command::IfBlock {
-                    test: test,
-                    true_branch: true_branch,
-                    false_branch: false_branch,
+                    test,
+                    true_branch,
+                    false_branch,
                 },
             };
             should_parse_stmt!(["  10  IF (X.EQ.Y) THEN",
@@ -1466,10 +1457,10 @@ mod tests {
             else_if_branch.shrink_to_fit();
             
             let expected = Statement {
-                label: Some(10 as i32),
+                label: Some(10_i32),
                 command: Command::IfBlock {
-                    test: test,
-                    true_branch: true_branch,
+                    test,
+                    true_branch,
                     false_branch: else_if_branch,
                 },
             };
@@ -1490,9 +1481,9 @@ mod tests {
                                     BinOp::Eq,
                                     Box::new(Expr::Variable(String::from("Y"))));
             let expected = Statement {
-                label: Some(10 as i32),
+                label: Some(10_i32),
                 command: Command::IfStatement {
-                    test: test,
+                    test,
                     true_branch: Box::new(Statement{
                         label: None,
                         command: Command::Goto(300),
@@ -1507,9 +1498,9 @@ mod tests {
         fn labeled_arith_if_example() {
             let test = Expr::Variable(String::from("X"));
             let expected = Statement {
-                label: Some(10 as i32),
+                label: Some(10_i32),
                 command: Command::ArithIf {
-                    test: test,
+                    test,
                     negative: 30,
                     zero: 40,
                     positive: 100,
@@ -1525,7 +1516,7 @@ mod tests {
             args.push(Expr::Variable(String::from("X")));
             args.shrink_to_fit();
             let expected = Statement {
-                label: Some(10 as i32),
+                label: Some(10_i32),
                 command: Command::Write(args),
             };
             should_parse_stmt!(" 10   WRITE (*,*) X",
@@ -1540,7 +1531,7 @@ mod tests {
             args.push(Expr::Variable(String::from("Z")));
             args.shrink_to_fit();
             let expected = Statement {
-                label: Some(10 as i32),
+                label: Some(10_i32),
                 command: Command::Write(args),
             };
             should_parse_stmt!(" 10   WRITE (*,*) X, Y,Z",
@@ -1553,7 +1544,7 @@ mod tests {
             args.push(Expr::Variable(String::from("X")));
             args.shrink_to_fit();
             let expected = Statement {
-                label: Some(10 as i32),
+                label: Some(10_i32),
                 command: Command::Read(args),
             };
             should_parse_stmt!(" 10   READ (*,*) X",
@@ -1568,7 +1559,7 @@ mod tests {
             args.push(Expr::Variable(String::from("Z")));
             args.shrink_to_fit();
             let expected = Statement {
-                label: Some(10 as i32),
+                label: Some(10_i32),
                 command: Command::Read(args),
             };
             should_parse_stmt!(" 10   READ (*,*) X, Y,Z",
@@ -1588,7 +1579,7 @@ mod tests {
         #[test]
         fn labeled_continue_with_leading_zeros() {
             let expected = Statement {
-                label: Some(10 as i32),
+                label: Some(10_i32),
                 command: Command::Continue
             };
             should_parse_stmt!(" 010  continue",
@@ -1598,7 +1589,7 @@ mod tests {
         #[test]
         fn labeled_continue() {
             let expected = Statement {
-                label: Some(10 as i32),
+                label: Some(10_i32),
                 command: Command::Continue
             };
             should_parse_stmt!(" 10   continue",
@@ -1618,7 +1609,7 @@ mod tests {
         #[test]
         fn labeled_goto() {
             let expected = Statement {
-                label: Some(100 as i32),
+                label: Some(100_i32),
                 command: Command::Goto(325)
             };
             should_parse_stmt!(" 100  goto 325",
