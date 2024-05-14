@@ -1,4 +1,79 @@
 <!--- -*- mode: Markdown; var: -*- -->
+# 2024-05-14T08:19:50-0700
+
+I finished the statement parsing yesterday, though I suspect there are
+edgecases I have not thought about yet. (I realize that I didn't include
+the `end` statement being parsed! As I am writing this, I am finishing
+this portion up...)
+
+## Program Unit Parsing
+
+I have started programming the parsing of program units. This should be
+considerably easier. The grammar for program units looks like:
+
+```ebnf
+program_unit = program | function | subroutine;
+
+program = "program" name { specification } { statement } "end";
+
+function = type "function" name params { specification } { statement } "end";
+
+subroutine = "subroutine" name params { specification } { statement } "end";
+
+params = "(" [name {"," name}] ")";
+
+(* Section 8 of the F77 Standard *)
+specification = type_declaration
+              | parameter
+              | equivalence
+              | common
+              | dimension
+              | implicit
+              | external
+              | intrinsic
+              | save;
+```
+
+I will start with just parsing the `program` and `type_declaration`
+portions of the program unit.
+
+## Refactor and Next Steps: Visitor Pattern, AST
+
+I refactored out the data structures to a `parse_tree` module because,
+well, that's what the parser is producing. The goal will be to transform
+this into an `abstract_syntax_tree` where the identifiers appearing in
+expressions are now "references" to the declaration of the variables,
+functions, subroutines, etc. (By "reference", this could mean either a
+pointer, or take advantage of the fact it refers to a local variable,
+look up its type, and store the array index as the identifier.)
+
+The transformation from parse tree to AST is rather straightforward, it
+can be implemented either via functions or visitor patterns.
+
+I should remember that there is still the matter of disambiguating
+function calls from array element accesses. The parse tree will still
+have "named data references" which are really nodes indicating "This is
+either a function call or an array access, but I do not know which
+one..." These should be completely flushed out. Transformation to AST
+would be the time to do it, plus that would guarantee there are no more
+named data reference nodes lingering around.
+
+Type checking can be done via visitor pattern. Code generation can be
+done via visitor pattern.
+
+It seems the best thing to do would be:
+
+- [ ] Finish parsing program units
+- [ ] Write up `ast::Expr`, `ast::Statement`, `ast::ProgramUnit` data
+      structures and a translation from `parse_tree::*` counterparts to
+      these ast data structures
+- [ ] Write up `ast::expr::Visitor`, `ast::stmt::Visitor`, and
+      `ast::unit::Visitor` traits for later use
+- [ ] Consider refactoring all the relevant position information to its
+      own data structure `Pos` which would be populated in the parse
+      tree, then transported along to the `ast::*` data structures (for
+      debugging purposes)
+
 # 2024-05-12T19:18:39-0700
 
 Remembering some bits of x86 assembly with AT&T syntax:

@@ -133,6 +133,7 @@ pub enum Command {
         lhs: Expr,
         rhs: Expr
     },
+    End,
     Illegal // should never be reached
 }
 

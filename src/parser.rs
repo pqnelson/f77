@@ -804,6 +804,8 @@ impl Parser {
                 TokenType::Do => self.block_do_construct(label),
                 TokenType::If => self.if_construct(label),
                 TokenType::Call => self.call_subroutine(label),
+                TokenType::End => Statement { label: label,
+                                              command: Command::End },
                 _ => {
                     self.assignment_or_expr(label)
                 }
@@ -1148,6 +1150,16 @@ mod tests {
             }
         }
 
+        #[test]
+        fn should_parse_end_statement() {
+            let expected = Statement {
+                label: None,
+                command: Command::End
+            };
+            should_parse_stmt!("      end",
+                               expected);
+        }
+        
         #[test]
         fn assign_constant_to_var() {
             let lhs = Expr::Variable(String::from("X"));
