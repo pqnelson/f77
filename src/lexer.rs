@@ -2,7 +2,7 @@ use std::fmt;
 
 // TODO: consider switching back to using String instead of Vec<char>,
 //       or at least switch to Vec<u8>...
-#[derive(PartialEq, Debug)] 
+#[derive(PartialEq, Debug, Copy, Clone)] 
 pub enum BaseType {
     Integer, Real, Character, Logical
 }

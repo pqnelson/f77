@@ -126,6 +126,10 @@ impl Parser {
         &self.current
     }
 
+    fn push_back(&mut self, token: Token) {
+        self.current = Some(token);
+    }
+
     fn advance(&mut self) -> Token {
         if let Some(v) = self.current.take() {
             assert!(self.current.is_none());
@@ -201,6 +205,365 @@ impl Parser {
         }
     }
 
+    /* *****************************************************************
+    Program Unit
+     ********************************************************** */
+    fn program_unit(&mut self) -> ProgramUnit {
+        if let Some(token) = self.peek() {
+            match token.token_type {
+                TokenType::Program => return self.program(),
+                _ => panic!("Expected a program unit, found {token}"),
+            }
+        }
+        return ProgramUnit::Empty;
+    }
+
+    /*
+    Section 8 of the FORTRAN 77 Standard says there are 9 specification
+    statements. The full grammar is reproduced below, but I annotated
+    which ones are not supported.
+    
+    ```ebnf
+    specification_statement = type_declaration
+                            | parameter; (* not yet *)
+
+    unsupported_specification_statement = 
+                equivalence (* no support *)
+              | common
+              | dimension
+              | implicit
+              | external
+              | intrinsic
+              | save;
+
+    (* 8.4 of the 1977 spec... *)
+    type_declaration = non_char_type_spec entity_decl_list
+    | "CHARACTER" ["*" len [","]] char_entity_decl_list;
+    
+    non_char_type_spec = non_char_base_type ["*" size];
+
+    non_char_base_type = "INTEGER" | "REAL" | "LOGICAL";
+
+    char_entity_decl = name ["*" len]
+                     | array_name "(" array_spec ")";
+
+    len = size
+        | "(" integer_const_expr ")"
+        | "(*)";
+
+    (* (5.1 of the 1977 spec, adjusted to fit the terms in the 1990 standard) *)
+    array_spec = dimension_declarator {"," dimension_declarator };
+    dimension_declarator = [lower_bound ":"] upper_bound;
+    
+    (* ... or R501 et seq of the 1990 spec *)
+    type_declaration = type_spec entity_decl_list;
+    
+    size = unsigned_nonzero_integer_const;
+
+    entity_decl_list = name ["(" array_spec ")"] ["*" char_length];
+
+    char_length = size;
+
+
+    (* R512 *)
+    array_spec = explicit_shape_spec {"," explicit_shape_spec}
+               | assumed_shape_spec {"," assumed_shape_spec}
+               | deferred_shape_spec {"," deferred_shape_spec};
+
+    (* R513 *)
+    explicit_shape_spec = [lower_bound ":"] upper_bound;
+    lower_bound = specification_expr; (* R514 *)
+    upper_bound = specification_expr; (* R515 *)
+
+    (* R516 *)
+    assumed_shape_spec = [lower_bound] ":";
+
+    (* R517 *)
+    deferred_shape_spec = ":";
+    ```
+     */
+    fn specification(&mut self) -> Vec<Specification> {
+        if let Some(token) = self.peek() {
+            match token.token_type {
+                TokenType::Type(t) => {
+                },
+                _ => {
+                },
+            }
+        }
+        return Vec::<Specification>::new();
+    }
+    /*
+    The type declaration is, well, a hot mess. Although Fortran 90 did a
+    crackerjack job cleaning up FORTRAN 77's tangled allowances, we are
+    trying to implement a FORTRAN 77 compiler.
+
+    See:
+    - Section 5 of the Fortran 90 specification
+    - Section 8.4 of the FORTRAN 77 specification (and 5.1 for array declarations)
+
+    The grammar we implement:
+    ```ebnf
+    (* R501 et seq. terminology stolen *)
+    type_declaration = non_char_type_declaration
+    | char_type_declaration;
+    
+    non_char_type_declaration = non_char_type_spec entity_decl_list;
+    
+    entity_decl_list = entity_decl {"," entity_decl};
+
+    type_spec = base_type ["*"
+    ```
+    fn entity_decl_list(&mut self, type_spec) {
+        
+    }
+     */
+    fn char_type_declarations(&mut self) {
+    }
+    
+    /*
+    Using the F90 Standard terminology and grammar, I omit the deferred
+    shape spec (since that seems to be new to F90).
+    
+    ```ebnf
+    array_spec = explicit_shape_spec_list
+               | assumed_shape_spec_list
+               | assumed_size_spec;
+    
+    explicit_shape_spec_list = explicit_shape_spec {"," explicit_shape_spec};
+
+    explicit_shape_spec = [lower_bound ":"] upper_bound;
+
+    assumed_shape_spec_list = assumed_shape_spec {"," assumed_shape_spec};
+
+    assumed_shape_spec = [lower_bound] ":";
+
+    assumed_size_spec = [explicit_shape_spec_list ","] [lower_bound ":"] "*";
+    ```
+
+    ASSUMES: the leading left parentheses has been processed
+     */
+    fn array_spec(&mut self) -> ArraySpec {
+        // assert(Some(TokenType::LeftParen) != self.peek());
+        if self.matches(&[TokenType::Star]) {
+            self.advance();
+            self.consume(TokenType::RightParen, "'*' expected to end array spec");
+            return ArraySpec::AssumedSize(Vec::<(Option::<Expr>, Expr)>::new(), None);
+        } else if self.matches(&[TokenType::Colon]) {
+            self.advance();
+            if self.matches(&[TokenType::Comma]) {
+                let mut indices = Vec::<Option::<Expr>>::with_capacity(8);
+                indices.push(None);
+                return self.assumed_shape(indices);
+            } else if self.matches(&[TokenType::RightParen]) {
+                self.advance();
+                let mut indices = Vec::<Option::<Expr>>::with_capacity(1);
+                indices[0] = None;
+                return ArraySpec::AssumedShape(indices);
+            } else {
+                // illegal form
+                let token = self.advance();
+                panic!("Line {}: Array spec found {} following ':', expected with ',' or ')'",
+                       token.line,
+                       token.token_type);
+            }
+        } else {
+            // expr;
+            let lower = self.expr();
+            if self.matches(&[TokenType::Colon]) {
+                // "(7:...)"
+                self.advance();
+                if self.matches(&[TokenType::Comma]) {
+                    // "(7:, ...)"
+                    let mut indices = Vec::<Option::<Expr>>::with_capacity(8);
+                    indices.push(Some(lower));
+                    return self.assumed_shape(indices);
+                } else if self.matches(&[TokenType::RightParen]) {
+                    // "(7:)"
+                    let mut indices = Vec::<Option::<Expr>>::with_capacity(1);
+                    indices[0] = None;
+                    return ArraySpec::AssumedShape(indices);
+                } else if self.matches(&[TokenType::Star]) {
+                    // "(7:*)"
+                    self.advance();
+                    self.consume(TokenType::RightParen, "array spec should end with *");
+                    let mut indices = Vec::<(Option::<Expr>, Expr)>::new();
+                    return ArraySpec::AssumedSize(indices, Some(lower));
+                } else {
+                    // "(7:15...)"
+                    let upper = self.expr();
+                    if self.matches (&[TokenType::Comma]) {
+                        // "(7:15, ...)"
+                        let mut indices = Vec::<(Option::<Expr>,Expr)>::with_capacity(8);
+                        indices.push((Some(lower),upper));
+                        self.advance();
+                        return self.explicit_shape_or_assumed_size(indices);
+                    } else if self.matches (&[TokenType::RightParen]) {
+                        // "(7:15)"
+                        self.advance();
+                        let mut indices = Vec::<(Option::<Expr>,Expr)>::with_capacity(1);
+                        indices[0] = (Some(lower),upper);
+                        return ArraySpec::ExplicitShape(indices);
+                    } else {
+                        // "(7:???)", i.e., illegal form...
+                        let token = self.advance();
+                        panic!("Line {}: array specifier malformed, expected ',' or ')', found: {}",
+                               self.line,
+                               token.token_type);
+                    }
+                }
+            } else if self.matches(&[TokenType::Comma]) {
+                // "(7, ...)"
+                self.advance();
+                let mut indices = Vec::<(Option::<Expr>, Expr)>::with_capacity(8);
+                indices.push((None, lower));
+                return self.explicit_shape_or_assumed_size(indices);
+            } else if self.matches(&[TokenType::RightParen]) {
+                // "(7)"
+                self.advance();
+                let mut indices = Vec::<(Option::<Expr>, Expr)>::with_capacity(1);
+                indices.push((None, lower));
+                return ArraySpec::ExplicitShape(indices);
+            } else {
+                // (expr<something unexpected>);
+                let token = self.advance();
+                panic!("Line {}: Array spec...shouldn't be in this state, but found unexpected token {}",
+                       token.line,
+                       token.token_type);
+            }
+        }
+    }
+
+    /*
+Requires: self.peek() == Some(TokenType::Comma)
+Requires: indices is not empty
+     */
+    fn assumed_shape(&mut self, mut indices: Vec<(Option<Expr>)>) -> ArraySpec {
+        let line = self.line;
+        while !self.is_finished() {
+            // each iteration processes if it should continue, or if
+            // it's done, or if it should panic...
+            if self.matches(&[TokenType::RightParen]) {
+                self.advance();
+                indices.shrink_to_fit();
+                return ArraySpec::AssumedShape(indices);
+            } else {
+                self.consume(TokenType::Comma,
+                             "Assumed shape spec separates dimensions by commas");
+            }
+            
+            if self.matches(&[TokenType::Colon]) {
+                self.advance();
+                indices.push(None);
+            } else {
+                let bound = self.expr();
+                self.consume(TokenType::Colon, "Assumed shape spec expected a colon");
+                indices.push(Some(bound));
+            }
+        }
+        panic!("Runaway Array spec starting on line {}", line);
+    }
+
+    /*
+    We don't know if we're processing an explicit_shaped or assumed_size
+    specification, so we bundle them together in a single place.
+     */
+    fn explicit_shape_or_assumed_size(&mut self, mut indices: Vec<(Option<Expr>,Expr)>) -> ArraySpec {
+        /*
+        This processes the following grammar:
+
+        - expr "," rest...
+        - expr ")"
+        - expr ":" expr "," rest...
+        - expr ":" expr ")"
+        - expr ":*)"
+        - "*)"
+
+        If there is a `rest...`, it will be handled in the next iteration.
+         */
+        let line = self.line;
+        while !self.is_finished() {
+            if self.matches(&[TokenType::Star]) {
+                // "*)" case
+                self.advance();
+                self.consume(TokenType::RightParen, "array spec must end with '*'");
+                indices.shrink_to_fit();
+                return ArraySpec::AssumedSize(indices, None);
+            }
+            let bound = self.expr();
+            if self.matches(&[TokenType::Comma]) {
+                // expr "," rest...
+                self.advance();
+                indices.push((None, bound));
+            } else if self.matches(&[TokenType::RightParen]) {
+                // expr ")"
+                self.advance();
+                indices.push((None, bound));
+                indices.shrink_to_fit();
+                return ArraySpec::ExplicitShape(indices);
+            } else if self.matches(&[TokenType::Colon]) {
+                self.advance();
+                if self.matches(&[TokenType::Star]) {
+                    // "expr:*)"
+                    self.advance();
+                    self.consume(TokenType::RightParen, "array spec must end with '*'");
+                    indices.shrink_to_fit();
+                    return ArraySpec::AssumedSize(indices, Some(bound));
+                } else {
+                    let upper = self.expr();
+                    if self.matches(&[TokenType::Comma]) {
+                        // "expr:expr, ...)"
+                        self.consume(TokenType::Comma, "array spec expects comma separating dimensions");
+                        indices.push((Some(bound), upper));
+                    } else if self.matches(&[TokenType::RightParen]) {
+                        // "expr:expr)"
+                        self.advance();
+                        indices.push((Some(bound), upper));
+                        indices.shrink_to_fit();
+                        return ArraySpec::ExplicitShape(indices);
+                    } else {
+                        // illegal
+                        let token = self.advance();
+                        panic!("Line {} unexpected token following '{:?}:' found: {}",
+                               token.line,
+                               bound,
+                               token.token_type);
+                    }
+                }
+            } else {
+                // illegal
+                let token = self.advance();
+                panic!("Line {} unexpected token following {:?} found: {}",
+                       token.line,
+                       bound,
+                       token.token_type);
+            }
+        }
+        panic!("Line {}: runaway unterminated array specifier encountered",
+               line);
+    }
+
+    fn program(&mut self) -> ProgramUnit {
+        self.consume(TokenType::Program, "");
+        let token = self.advance();
+        let name = match token.token_type {
+            TokenType::Identifier(v) => v.into_iter().collect(),
+            other => panic!("Program expected name, found {other}"),
+        };
+        let spec = self.specification();
+        let mut body = Vec::<Statement>::with_capacity(32);
+        loop {
+            let mut stmt = self.statement();
+            if stmt.is_end() {
+                body.push(stmt);
+                break;
+            } else {
+                body.push(stmt);
+            }
+        }
+        return ProgramUnit::Program { name, spec, body };
+    }
+    
     /* *****************************************************************
     Statements
      ********************************************************** */

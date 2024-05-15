@@ -1,4 +1,47 @@
 <!--- -*- mode: Markdown; var: -*- -->
+# 2024-05-14T08:42:59-0700
+
+Before I forget, code generation and intermediate representation needs
+to be researched more.
+
+- Intermediate representation
+  - SSA (static single assignment) is the hot new thing, but it might be
+    overkill for my purposes; it uses $\phi(a_{1},\dots,a_{n})$ notation
+    for "Use whichever one of these is defined". 
+  - [SSA Book [pdf]](https://pfalcon.github.io/ssabook/latest/book.pdf)
+  - [Example SSA compiler](https://combinatorylogic.github.io/mbase-docs/lang0.html)
+  - Matthieu Lemerre, [SSA Translation is an Abstract Interpretation](https://binsec.github.io/assets/publications/papers/2023-popl-full-with-appendices.pdf)
+  - Note that usually the workflow is to: (1) translate to three-address
+    code, (2) convert three-address code to SSA, (3) perform
+    optimizations, (4) convert optimized SSA back to three-address code.
+  - https://gist.github.com/CMCDragonkai/2f4b5e078f690443d190
+- Three address code (resembles RISC) and two address code (useful for
+  x86 targets)
+  - It seems that, in academia, Jouette assembly is used for
+    three-address code
+- [What sort of intermediate representation did the first Fortran compiler use?](https://retrocomputing.stackexchange.com/q/20506)
+  Retrocomputing stackexchange thread
+- ILOC
+  - Used in Cooper and Torczon's _Engineering a Compiler_
+  - Resembles RISC assembly
+  - See, e.g., 11.4 of the third edition of Cooper and Torczon
+    ("Selection via tree-pattern matching") on tiles, a common notion
+    with code generation that the IR should describe all possible ASTs
+    (a tile is a pair `<x,y>` where `x` is a node in the AST and `y` is
+    the root of an "operation tree", an idiosyncratic notion in Cooper
+    and Torczon --- basically `y` could implement `x`).
+- Shayan Najd and Simon Peyton Jones [Trees that grow](https://www.microsoft.com/en-us/research/uploads/prod/2016/11/trees-that-grow.pdf)
+  - Idiom for annotating trees with more data
+
+## Compiler Backed
+
+- https://www.cs.cornell.edu/courses/cs4120/2023sp/notes.html?id=tiles
+- Gabriel S. Hjort Blindell,
+  "Survey on Instruction Selection: An Extensive and Modern Literature Review".
+  [arXiv:1306.4898](https://arxiv.org/abs/1306.4898), 139 pages
+  - The same author also wrote a _book_ on instruction selection!
+
+
 # 2024-05-14T08:19:50-0700
 
 I finished the statement parsing yesterday, though I suspect there are

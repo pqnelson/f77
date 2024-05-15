@@ -140,7 +140,7 @@ pub enum Command {
 // 5 digit label with values <= (10^5) - 1 <= 0b11000011010011111 < 2^17
 #[derive(PartialEq, Debug)]
 pub struct Statement {
-        pub label: Option<i32>,
+    pub label: Option<i32>,
     pub command: Command,
 }
 
@@ -148,5 +148,122 @@ impl Statement {
     pub fn is_continue(&mut self) -> bool {
         matches!(self.command, Command::Continue)
     }
+    pub fn is_end(&mut self) -> bool {
+        matches!(self.command, Command::End)
+    }
 }
-// }
+
+#[derive(PartialEq, Debug)]
+pub enum ProgramUnitKind {
+    Program,
+    Subroutine,
+    Function,
+}
+
+#[derive(PartialEq, Debug)]
+pub enum Type {
+    Integer,
+    Real,
+    Character,
+    Logical,
+    Real64,
+    Real128,
+    Integer64,
+    Integer128,
+    External // function reference
+}
+
+/*
+Section 5.1 of the Fortran 77 Standard does not actually give bounds on
+the dimensions of an array (just that they must be arithmetic
+expressions containing integer expressions).
+
+Table 6.1 in the Fortran 90 standard gives examples of indexing in
+Fortran, and how it's interpreted. If we were to follow this Standard,
+we should have `upper_bound - lower_bound` be a `usize`. It therefore
+makes sense to use `isize` for the ArrayIndex. We can use
+`upper_bound.abs_diff(lower_bound)` to get the size of the dimension.
+ */
+pub type ArrayIndex = isize;
+
+/*
+array_spec = explicit_shape_spec_list
+           | assumed_shape_spec_list
+           | assumed_size_spec;
+
+explicit_shape_spec_list = explicit_spec {"," explicit_spec};
+explicit_spec = [lower_bound ":"] upper_bound;
+
+assumed_shape_spec_list = assumed_shape {"," assumed_shape};
+assumed_shape = [lower_bound] ":";
+
+assumed_size_spec = [explicit_shape_spec_list ","] [lower_bound ":"] "*";
+ */
+#[derive(PartialEq, Debug)]
+pub enum ArraySpec {
+    ExplicitShape(Vec<(Option<Expr>, Expr)>),
+    AssumedShape(Vec<Option<Expr>>),
+    // assumed_size_spec stored as AssumedSize(ExplicitShape, Some(lower_bound))
+    AssumedSize(Vec<(Option<Expr>, Expr)>, Option<Expr>),
+}
+
+impl ArraySpec {
+    pub fn rank(self) -> usize {
+        match self {
+            ArraySpec::ExplicitShape(v) => v.len(),
+            ArraySpec::AssumedShape(v) => v.len(),
+            ArraySpec::AssumedSize(v, e) => v.len() + 1,
+        }
+    }
+}
+
+/*
+Specification statements include parameter declarations, type
+declarations, etc. See section 8 of the Fortran 77 Standard.
+
+```ebnf
+specification_statement = type_declaration
+                        | parameter; (* not yet *)
+
+unsupported_specification_statement = 
+            equivalence (* no support *)
+          | common
+          | dimension
+          | implicit
+          | external
+          | intrinsic
+          | save;
+ */
+#[derive(PartialEq, Debug)]
+pub struct VarDeclaration {
+    kind: Type,
+    name: String,
+    array: Option<ArraySpec>,
+    /*
+    rank: u8, // F77 says this must be less than 7
+    dims: Vec<(ArrayIndex,ArrayIndex)>,
+     */
+}
+#[derive(PartialEq, Debug)]
+pub enum Specification {
+    TypeDeclaration (VarDeclaration),
+}
+
+impl VarDeclaration {
+    pub fn rank(self) -> usize {
+        match self.array {
+            None => 0,
+            Some(spec) => spec.rank(),
+        }
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub enum ProgramUnit {
+    Program {
+        name: String,
+        spec: Vec<Specification>,
+        body: Vec<Statement>,
+    },
+    Empty,
+}
