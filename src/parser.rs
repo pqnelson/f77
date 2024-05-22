@@ -466,7 +466,7 @@ impl Parser {
     assumed_size_spec = [explicit_shape_spec_list ","] [lower_bound ":"] "*";
     ```
 
-    ASSUMES: the leading left parentheses has been processed
+    ASSUMES: the leading left parentheses has NOT been processed
      */
     // TODO: test thoroughly
     fn array_spec(&mut self) -> ArraySpec {
@@ -475,7 +475,6 @@ impl Parser {
         } else {
             self.advance();
         }
-        // assert(Some(TokenType::LeftParen) != self.peek());
         if self.matches(&[TokenType::Star]) {
             self.advance();
             self.consume(TokenType::RightParen, "'*' expected to end array spec");
@@ -489,7 +488,7 @@ impl Parser {
             } else if self.matches(&[TokenType::RightParen]) {
                 self.advance();
                 let mut indices = Vec::<Option::<Expr>>::with_capacity(1);
-                indices[0] = None;
+                indices.push(None);
                 return ArraySpec::AssumedShape(indices);
             } else {
                 // illegal form
@@ -512,7 +511,7 @@ impl Parser {
                 } else if self.matches(&[TokenType::RightParen]) {
                     // "(7:)"
                     let mut indices = Vec::<Option::<Expr>>::with_capacity(1);
-                    indices[0] = None;
+                    indices.push(Some(lower));
                     return ArraySpec::AssumedShape(indices);
                 } else if self.matches(&[TokenType::Star]) {
                     // "(7:*)"
@@ -1648,7 +1647,7 @@ mod tests {
             ( $text:expr, $expected:expr ) => {
                 let l = Lexer::new($text.chars().collect());
                 let mut parser = Parser::new(l);
-                let actual = parser.statement();
+                let actual = parser.specification();
                 assert_eq!($expected, actual);
             }
         }
@@ -1662,7 +1661,102 @@ mod tests {
         - REAL windspeed(:)
         - REAL windspeed(-3:15,:*) --- should fail
         - REAL windspeed(-3,15,7:*)
-        */
+         */
+
+        #[test]
+        fn malformed_assumed_size_with_var_param() {
+            let src = "      REAL S(N,:)";
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut s_spec = Vec::<(Option<Expr>,Expr)>::with_capacity(2);
+            s_spec.push((None,Expr::Variable(String::from("N"))));
+            s_spec.push((None,Expr::ErrorExpr));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("S"),
+                    array: ArraySpec::ExplicitShape(s_spec),
+                }
+            ));
+            should_parse_spec!(src, expected);
+        }
+
+        #[test]
+        fn assumed_size_with_var_param() {
+            let src = "      REAL S(N,*)";
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut s_spec = Vec::<(Option<Expr>,Expr)>::with_capacity(1);
+            s_spec.push((None,Expr::Variable(String::from("N"))));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("S"),
+                    array: ArraySpec::AssumedSize(s_spec, None),
+                }
+            ));
+            should_parse_spec!(src, expected);
+        }
+
+        #[test]
+        fn two_colon_indices_in_array_spec() {
+            let src = "      REAL D(:,:)";
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut d_spec = Vec::<Option<Expr>>::with_capacity(2);
+            d_spec.push(None);
+            d_spec.push(None);
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("D"),
+                    array: ArraySpec::AssumedShape(d_spec),
+                }
+            ));
+            should_parse_spec!(src, expected);
+        }
+
+        #[test]
+        fn two_assumed_shape_arrays() {
+            let src = "      REAL A(:), B(0:)";
+            let mut expected = Vec::<Specification>::with_capacity(2);
+            let mut a_spec = Vec::<Option<Expr>>::with_capacity(1);
+            a_spec.push(None);
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("A"),
+                    array: ArraySpec::AssumedShape(a_spec),
+                }
+            ));
+            let mut b_spec = Vec::<Option<Expr>>::with_capacity(1);
+            b_spec.push(Some(Expr::Int64(0)));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("B"),
+                    array: ArraySpec::AssumedShape(b_spec),
+                }
+            ));
+            should_parse_spec!(src, expected);
+        }
+
+        #[test]
+        fn explicit_array_with_var() {
+            let src = "      REAL W(n, 10)";
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut spec = Vec::<(Option<Expr>, Expr)>::with_capacity(2);
+            spec.push((None, Expr::Variable(String::from("n"))));
+            spec.push((None, Expr::Int64(10)));
+            
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("W"),
+                    array: ArraySpec::ExplicitShape(spec),
+                }
+            ));
+
+            should_parse_spec!(src, expected);
+        }
+            
 
         #[test]
         fn should_parse_multiple_decls() {
