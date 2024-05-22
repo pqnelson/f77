@@ -532,7 +532,7 @@ impl Parser {
                         // "(7:15)"
                         self.advance();
                         let mut indices = Vec::<(Option::<Expr>,Expr)>::with_capacity(1);
-                        indices[0] = (Some(lower),upper);
+                        indices.push((Some(lower),upper));
                         return ArraySpec::ExplicitShape(indices);
                     } else {
                         // "(7:???)", i.e., illegal form...
@@ -1655,13 +1655,68 @@ mod tests {
         /*
         Test other array specifications:
         - REAL windspeed(-3:15)
-        - REAL windspeed(3:19)
         - REAL windspeed(3:)
-        - REAL windspeed(-3:15,*)
         - REAL windspeed(:)
         - REAL windspeed(-3:15,:*) --- should fail
         - REAL windspeed(-3,15,7:*)
          */
+
+        #[test]
+        fn assumed_size_array_with_lower_bound() {
+            let src = "      REAL C(-3:12, *)";
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut c_spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
+            c_spec.push((Some(Expr::Unary(UnOp::Minus,
+                                          Box::new(Expr::Int64(3)))),
+                         Expr::Int64(12)));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("C"),
+                    array: ArraySpec::AssumedSize(c_spec, None),
+                }
+            ));
+            should_parse_spec!(src, expected);
+        }
+
+        #[test]
+        fn explicit_array_with_lower_bound() {
+            let src = "      REAL B(10:70)";
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut b_spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
+            b_spec.push((Some(Expr::Int64(10)), Expr::Int64(70)));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("B"),
+                    array: ArraySpec::ExplicitShape(b_spec),
+                }
+            ));
+            should_parse_spec!(src, expected);
+        }
+
+        #[test]
+        fn scalar_and_array_params() {
+            let src = "      REAL A,B(:)";
+            let mut expected = Vec::<Specification>::with_capacity(2);
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("A"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            let mut b_spec = Vec::<(Option<Expr>)>::with_capacity(1);
+            b_spec.push(None);
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("B"),
+                    array: ArraySpec::AssumedShape(b_spec),
+                }
+            ));
+            should_parse_spec!(src, expected);
+        }
 
         #[test]
         fn malformed_assumed_size_with_var_param() {
