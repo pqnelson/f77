@@ -1,4 +1,23 @@
 <!--- -*- mode: Markdown; var: -*- -->
+# 2024-05-16T07:34:14-0700
+
+Lessons I am learning from writing this compiler.
+
+1. Write down the grammar first. Give examples for each rule (and turn
+   them into unit tests for the parser).
+2. Write down unit tests, think about more unit tests. You should try to
+   catch as many common "typos" in the input code (i.e., the source code
+   your compiler will work on) as possible as unit tests.
+3. Parsing specific lessons from Fortran:
+   - Don't worry too much about complications about arrays, at least not
+     initially.
+   - Work with the simple types first, then get to the AST. You can go
+     back and add, say, arrays or parameters later on.
+     - [How to test a compiler?](https://langdev.stackexchange.com/a/1547/70)
+     - [How to test a parser?](https://langdev.stackexchange.com/q/1558/70)
+4. The intermediate representation could be 3-address code (which is
+   optimal for RISC targets) or 2-address code (optimal for x86 targets)
+
 # 2024-05-14T08:42:59-0700
 
 Before I forget, code generation and intermediate representation needs

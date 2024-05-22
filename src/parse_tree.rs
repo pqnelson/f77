@@ -160,7 +160,7 @@ pub enum ProgramUnitKind {
     Function,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum Type {
     Integer,
     Real,
@@ -205,6 +205,7 @@ pub enum ArraySpec {
     AssumedShape(Vec<Option<Expr>>),
     // assumed_size_spec stored as AssumedSize(ExplicitShape, Some(lower_bound))
     AssumedSize(Vec<(Option<Expr>, Expr)>, Option<Expr>),
+    Scalar,
 }
 
 impl ArraySpec {
@@ -213,6 +214,7 @@ impl ArraySpec {
             ArraySpec::ExplicitShape(v) => v.len(),
             ArraySpec::AssumedShape(v) => v.len(),
             ArraySpec::AssumedSize(v, e) => v.len() + 1,
+            ArraySpec::Scalar => 0,
         }
     }
 }
@@ -236,9 +238,9 @@ unsupported_specification_statement =
  */
 #[derive(PartialEq, Debug)]
 pub struct VarDeclaration {
-    kind: Type,
-    name: String,
-    array: Option<ArraySpec>,
+    pub kind: Type,
+    pub name: String,
+    pub array: ArraySpec,
     /*
     rank: u8, // F77 says this must be less than 7
     dims: Vec<(ArrayIndex,ArrayIndex)>,
@@ -251,10 +253,7 @@ pub enum Specification {
 
 impl VarDeclaration {
     pub fn rank(self) -> usize {
-        match self.array {
-            None => 0,
-            Some(spec) => spec.rank(),
-        }
+        self.array.rank()
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::lexer::{
+    BaseType,
     TokenType,
     Token,
     Lexer
@@ -283,15 +284,24 @@ impl Parser {
     ```
      */
     fn specification(&mut self) -> Vec<Specification> {
-        if let Some(token) = self.peek() {
-            match token.token_type {
-                TokenType::Type(t) => {
-                },
-                _ => {
-                },
+        let mut result = Vec::<Specification>::with_capacity(16);
+        while !self.is_finished() {
+            if let Some(token) = self.peek() {
+                match token.token_type {
+                    TokenType::Type(t) => {
+                        for d in self.type_declarations() {
+                            result.push(Specification::TypeDeclaration(d));
+                        }
+                    },
+                    _ => {
+                        // Others are left "TODO"
+                        break;
+                    },
+                }
             }
         }
-        return Vec::<Specification>::new();
+        result.shrink_to_fit();
+        return result;
     }
     /*
     The type declaration is, well, a hot mess. Although Fortran 90 did a
@@ -318,7 +328,122 @@ impl Parser {
         
     }
      */
-    fn char_type_declarations(&mut self) {
+    fn determine_type(&mut self) -> Type {
+        // get the basic type
+        let token = self.advance();
+        let kind: BaseType;
+        match token.token_type {
+            TokenType::Type(b) => {
+                kind = b;
+            },
+            other => {
+                panic!("Line {}: type declaration expects type, found {:?}",
+                       token.line,
+                       other);
+            }
+        }
+        let result;
+        // determine if the next character is a "*"
+        if self.check(TokenType::Star) {
+            self.advance();
+            // then get the modified size
+            let size = self.advance();
+            let width;
+            match size.token_type {
+                TokenType::Integer(x) => {
+                    // parse the integer
+                    width = x.iter().collect::<String>().parse::<i32>().unwrap();
+                },
+                other => {
+                    panic!("Line {}: type declaration expects integer size, found {:?}",
+                           size.line,
+                           other);
+                },
+            }
+            match kind {
+                BaseType::Real => {
+                    match width {
+                        1..=3 => {
+                            eprintln!("Line {} Warning: REAL*{} invalid width, rounding up to REAL*4",
+                                      self.line,
+                                      width);
+                            result = Type::Real;
+                        },
+                        1..=4 => result = Type::Real,
+                        5..=7 => {
+                            eprintln!("Line {} Warning: REAL*{} invalid width, rounding up to REAL*8",
+                                      self.line,
+                                      width);
+                            result = Type::Real64;
+                        },
+                        8 => result = Type::Real64,
+                        9..=15 => {
+                            eprintln!("Line {} Warning: REAL*{} invalid width, rounding up to REAL*16",
+                                      self.line,
+                                      width);
+                            result = Type::Real128;
+                        },
+                        16 => result = Type::Real128,
+                        other => {
+                            eprintln!("Line {} Warning: REAL*{} invalid width, defaulting to REAL*8",
+                                      self.line,
+                                      width);
+                            result = Type::Real64;
+                        },
+                    }
+                },
+                BaseType::Integer => { result = Type::Integer; },
+                BaseType::Character => { result = Type::Character; },
+                BaseType::Logical => { result = Type::Logical; },
+            }
+            // weird quirk of Fortran 77 standard...
+            if self.check(TokenType::Comma) {
+                self.advance();
+            }
+        } else {
+            match kind {
+                BaseType::Real => result = Type::Real,
+                BaseType::Integer => result = Type::Integer,
+                BaseType::Character => result = Type::Character,
+                BaseType::Logical => result = Type::Logical,
+            };
+        }
+        return result;
+    }
+    
+    fn type_declarations(&mut self) -> Vec<VarDeclaration> {
+        // assert (current token is a basic type)
+        // determine the type
+        let kind: Type = self.determine_type();
+        let mut results = Vec::<VarDeclaration>::with_capacity(8);
+        while !self.is_finished() {
+            let name;
+            let id = self.advance();
+            match id.token_type {
+                TokenType::Identifier(v) => name = v.iter().collect(),
+                other => {
+                    panic!("Expected identifier, found {:?}",
+                           other);
+                    self.push_back(id);
+                    break;
+                },
+            }
+            let array = self.array_spec();
+            // add variable declaration to statement
+            results.push(VarDeclaration {
+                kind: kind,
+                name: name,
+                array: array
+            });
+            // keep iterating while it's a list
+            if self.check(TokenType::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        };
+        results.shrink_to_fit();
+        return results;
     }
     
     /*
@@ -343,7 +468,13 @@ impl Parser {
 
     ASSUMES: the leading left parentheses has been processed
      */
+    // TODO: test thoroughly
     fn array_spec(&mut self) -> ArraySpec {
+        if !self.check(TokenType::LeftParen) {
+            return ArraySpec::Scalar;
+        } else {
+            self.advance();
+        }
         // assert(Some(TokenType::LeftParen) != self.peek());
         if self.matches(&[TokenType::Star]) {
             self.advance();
@@ -736,7 +867,10 @@ Requires: indices is not empty
     (* R806 *)
     end-if-statement = "end" "if";
     ```
-    We can represent this using a `Statement::IfElse` 
+    We can represent this using a `Statement::IfElse`.
+
+    See Kernighan and Plauger's _The Elements of Programming Style_
+    for more about avoiding arithmetic if statements.
      */
     fn if_construct(&mut self, label: Option<i32>) -> Statement {
         assert!(TokenType::If == self.advance().token_type);
@@ -749,7 +883,12 @@ Requires: indices is not empty
         if let Some(token) = self.peek() {
             match token.token_type {
                 TokenType::Then => self.block_if(label, test),
-                TokenType::Integer(_) => self.arithmetic_if(label, test),
+                TokenType::Integer(_) => {
+                    /* TODO: issue warning here, since arithmetic-if is
+                     * bad style */
+                    return self.arithmetic_if(label, test);
+                },
+                // warn about "if (...) goto wherever"?
                 _ => self.if_statement(label, test),
             }
         } else {
@@ -1500,6 +1639,227 @@ named_data_ref = identifier
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // test all the specification statements parse correctly
+    mod spec {
+        use super::*;
+        #[macro_export]
+        macro_rules! should_parse_spec {
+            ( $text:expr, $expected:expr ) => {
+                let l = Lexer::new($text.chars().collect());
+                let mut parser = Parser::new(l);
+                let actual = parser.statement();
+                assert_eq!($expected, actual);
+            }
+        }
+
+        /*
+        Test other array specifications:
+        - REAL windspeed(-3:15)
+        - REAL windspeed(3:19)
+        - REAL windspeed(3:)
+        - REAL windspeed(-3:15,*)
+        - REAL windspeed(:)
+        - REAL windspeed(-3:15,:*) --- should fail
+        - REAL windspeed(-3,15,7:*)
+        */
+
+        #[test]
+        fn should_parse_multiple_decls() {
+            let src = ["      CHARACTER id",
+                       "      INTEGER windspeed, temp, rain"].concat();
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.specification();
+            let mut expected = Vec::<Specification>::with_capacity(4);
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Character,
+                    name: String::from("id"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Integer,
+                    name: String::from("windspeed"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Integer,
+                    name: String::from("temp"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Integer,
+                    name: String::from("rain"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn should_parse_three_int_decls() {
+            let src = ["      INTEGER windspeed, temp, rain"].concat();
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.specification();
+            let mut expected = Vec::<Specification>::with_capacity(3);
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Integer,
+                    name: String::from("windspeed"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Integer,
+                    name: String::from("temp"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Integer,
+                    name: String::from("rain"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn should_parse_single_logical_decl() {
+            let src = ["      LOGICAL panicking"].concat();
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.specification();
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Logical,
+                    name: String::from("panicking"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn should_parse_single_real_rank_2_assumed_size_array_decl() {
+            let src = ["      REAL windspeed(17,*)"].concat();
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.specification();
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
+            spec.push((None, Expr::Int64(17)));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("windspeed"),
+                    array: ArraySpec::AssumedSize(spec, None),
+                }
+            ));
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn should_parse_single_real_rank_2_array_decl() {
+            let src = ["      REAL windspeed(17,34)"].concat();
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.specification();
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut spec = Vec::<(Option<Expr>, Expr)>::with_capacity(2);
+            spec.push((None, Expr::Int64(17)));
+            spec.push((None, Expr::Int64(34)));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("windspeed"),
+                    array: ArraySpec::ExplicitShape(spec),
+                }
+            ));
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn should_parse_single_real_array_decl() {
+            let src = ["      REAL windspeed(17)"].concat();
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.specification();
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
+            spec.push((None, Expr::Int64(17)));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("windspeed"),
+                    array: ArraySpec::ExplicitShape(spec),
+                }
+            ));
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn should_parse_single_real_decl() {
+            let src = ["      REAL windspeed"].concat();
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.specification();
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("windspeed"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn should_parse_single_int_decl() {
+            let src = ["      INTEGER windspeed"].concat();
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.specification();
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Integer,
+                    name: String::from("windspeed"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn should_parse_single_char_decl() {
+            let src = ["      CHARACTER x"].concat();
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.specification();
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Character,
+                    name: String::from("x"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            assert_eq!(expected, actual);
+        }
+    }
 
     mod stmt {
         use super::*;
