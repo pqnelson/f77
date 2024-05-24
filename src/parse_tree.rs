@@ -133,6 +133,7 @@ pub enum Command {
         lhs: Expr,
         rhs: Expr
     },
+    Stop,
     End,
     Illegal // should never be reached
 }
@@ -150,6 +151,9 @@ impl Statement {
     }
     pub fn is_end(&mut self) -> bool {
         matches!(self.command, Command::End)
+    }
+    pub fn is_stop(&mut self) -> bool {
+        matches!(self.command, Command::Stop)
     }
 }
 

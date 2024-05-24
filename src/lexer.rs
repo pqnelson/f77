@@ -307,9 +307,10 @@ impl Lexer {
     // Try to parse the label for the line, if it is present; if not,
     // return None.
     fn try_label(&mut self) -> Option<TokenType> {
-        if 1 <= self.offset && self.offset <= 5 {
+        println!("\n\ntry_label() self.offset = {}", self.offset);
+        if 1 <= self.offset && self.offset <= 6 {
             let mut l: Vec<char> = Vec::new();
-            let stop = 6 - self.offset;
+            let stop = 7 - self.offset;
             for _i in 0..stop {
                 if !self.input[self.read_position].is_whitespace() {
                     l.push(self.input[self.read_position]);

@@ -739,11 +739,25 @@ Requires: indices is not empty
         };
         let spec = self.specification();
         let mut body = Vec::<Statement>::with_capacity(32);
-        loop {
+        let mut has_stopped = false;
+        while !self.is_finished() {
             let mut stmt = self.statement();
-            if stmt.is_end() {
+            if stmt.is_stop() {
                 body.push(stmt);
-                break;
+                let mut stmt2 = self.statement();
+                if !stmt2.is_end() {
+                    panic!("main program 'stop' should follow by 'end', found {:?}", stmt2);
+                    body.push(stmt2);
+                } else {
+                    body.push(stmt2);
+                    break;
+                }
+            } else if stmt.is_end() {
+                panic!("WARNING: main program 'end' must be preceded by 'stop'");
+                body.push(stmt);
+                if has_stopped {
+                    break;
+                }
             } else {
                 body.push(stmt);
             }
@@ -1161,6 +1175,9 @@ Requires: indices is not empty
                 break;
             }
             do_block.push(statement);
+            if self.is_finished() {
+                panic!("Runaway do-loop started on line {}", line);
+            }
         }
         do_block.shrink_to_fit();
         Statement {
@@ -1202,7 +1219,7 @@ Requires: indices is not empty
         let (var, start, stop, stride) = self.loop_control();
         // parse the do_block
         let mut do_block = Vec::<Statement>::with_capacity(32);
-        loop {
+        while !self.is_finished() {
             if found_end(self, line) {
                 break;
             }
@@ -1362,8 +1379,16 @@ Requires: indices is not empty
                 TokenType::Do => self.block_do_construct(label),
                 TokenType::If => self.if_construct(label),
                 TokenType::Call => self.call_subroutine(label),
-                TokenType::End => Statement { label: label,
-                                              command: Command::End },
+                TokenType::Stop => {
+                    self.advance();
+                    Statement { label: label,
+                                command: Command::Stop }
+                },
+                TokenType::End => {
+                    self.advance();
+                    Statement { label: label,
+                                command: Command::End }
+                },
                 _ => {
                     self.assignment_or_expr(label)
                 }
@@ -1660,6 +1685,17 @@ named_data_ref = identifier
         }
     }
 
+    fn intrinsic_real_conversion(&mut self) -> Expr {
+        self.consume(TokenType::LeftParen,
+                     "Left paren expected in 'REAL' function call conversion");
+        let arg = self.expr();
+        self.consume(TokenType::RightParen,
+                     "Right paren expected in 'REAL' conversion function call");
+        let mut args = Vec::<Expr>::with_capacity(1);
+        args.push(arg);
+        return Expr::FunCall(String::from("REAL"), args);
+    }
+    
     /*
     primary ::= int_constant
              |  real_constant
@@ -1682,6 +1718,10 @@ named_data_ref = identifier
             TokenType::Identifier(_) => {
                 self.named_data_ref(token)
             },
+            // carve out for intrinsic function
+            TokenType::Type(BaseType::Real) => {
+                self.intrinsic_real_conversion()
+            },
             TokenType::LeftParen => {
                 let e = self.expr();
                 self.consume(TokenType::RightParen,
@@ -1698,6 +1738,182 @@ named_data_ref = identifier
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // test program unit parsing [PROGRAM, FUNCTION, SUBROUTINE]
+    mod unit {
+        use super::*;
+
+        #[test]
+        fn main_with_only_declarations_test() {
+            let src = ["      PROGRAM min1\n",
+                       "      INTEGER k\n",
+                       "      REAL m\n",
+                       "      STOP\n",
+                       "      end"].concat();
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.program();
+            let mut spec = Vec::<Specification>::with_capacity(2);
+            spec.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Integer,
+                    name: String::from("k"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            spec.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("m"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            let mut body = Vec::<Statement>::with_capacity(32);
+            body.push(Statement {
+                label: None,
+                command: Command::Stop,
+            });
+            body.push(Statement {
+                label: None,
+                command: Command::End,
+            });
+            spec.shrink_to_fit();
+            body.shrink_to_fit();
+            let expected = ProgramUnit::Program {
+                name: String::from("min1"),
+                spec,
+                body
+            };
+            assert_eq!(expected, actual);
+        }
+        
+        /* van Loan & Coleman, "Handbook for Matrix
+         * Computations". SIAM, pg 44 */
+        #[test]
+        fn min1_test() {
+            let src = ["      PROGRAM min1",
+                       "      INTEGER k",
+                       "      REAL m",
+                       "C   ",
+                       "C  Set m = f(0)",
+                       "C   ",
+                       "      m = -3.0e0",
+                       "C   ",
+                       "C  Now check f(1), ..., f(10)",
+                       "C   ",
+                       "      DO 10 k = 1,10",
+                       "         x = real(k)",
+                       "         m = min(m, ((x - 2.0)*x - 7.0)*x - 3.0)",
+                       "   10 continue",
+                       "      WRITE(*,*)m",
+                       "      STOP",
+                       "      end"].join("\n");
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.program();
+            let mut spec = Vec::<Specification>::with_capacity(2);
+            spec.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Integer,
+                    name: String::from("k"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            spec.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("m"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            let mut body = Vec::<Statement>::with_capacity(32);
+            body.push(Statement {
+                label: None,
+                command: Command::Assignment {
+                    lhs: Expr::Variable(String::from("m")),
+                    rhs: Expr::Unary(UnOp::Minus,
+                                     Box::new(Expr::Float64(3.0)))
+                }
+            });
+            let mut do_body = Vec::<Statement>::with_capacity(2);
+            let mut args = Vec::<Expr>::with_capacity(1);
+            args.push(Expr::Variable(String::from("k")));
+            do_body.push(Statement {
+                label: None,
+                command: Command::Assignment {
+                    lhs: Expr::Variable(String::from("x")),
+                    rhs: Expr::FunCall(String::from("REAL"),
+                                       args)
+                }
+            });
+            // m = min(m, ((x - 2.0)*x - 7.0)*x - 3.0)
+            let mut args = Vec::<Expr>::with_capacity(2);
+            args.push(Expr::Variable(String::from("m")));
+            let x_minus_2 = Expr::Grouping(
+                Box::new(Expr::Binary(Box::new(Expr::Variable(String::from("x"))),
+                                      BinOp::Minus,
+                                      Box::new(Expr::Float64(2.0)))));
+            let x_minus_2_then_multiply_by_x_minus_7 = Expr::Grouping(
+                Box::new(Expr::Binary(
+                    Box::new(Expr::Binary(Box::new(x_minus_2),
+                                          BinOp::Times,
+                                          Box::new(Expr::Variable(String::from("x"))))),
+                    BinOp::Minus,
+                    Box::new(Expr::Float64(7.0)))));
+            args.push(Expr::Binary(Box::new(Expr::Binary(
+                Box::new(x_minus_2_then_multiply_by_x_minus_7),
+                BinOp::Times,
+                Box::new(Expr::Variable(String::from("x"))))),
+                                   BinOp::Minus,
+                                   Box::new(Expr::Float64(3.0))));
+            do_body.push(Statement {
+                label: None,
+                command: Command::Assignment {
+                    lhs: Expr::Variable(String::from("m")),
+                    rhs: Expr::NamedDataRef(String::from("min"),
+                                            args)
+                }
+            });
+            let terminal = Statement {
+                label: Some(10),
+                command: Command::Continue,
+            };
+            body.push(Statement {
+                label: None,
+                command: Command::LabelDo {
+                    target_label: 10,
+                    var: Expr::Variable(String::from("k")),
+                    start: Expr::Int64(1),
+                    stop: Expr::Int64(10),
+                    stride: None,
+                    body: do_body,
+                    terminal: Box::new(terminal),
+                },
+            });
+            let mut args = Vec::<Expr>::with_capacity(1);
+            args.push(Expr::Variable(String::from("m")));
+            body.push(Statement {
+                label: None,
+                command: Command::Write(args),
+            });
+            body.push(Statement {
+                label: None,
+                command: Command::Stop,
+            });
+            body.push(Statement {
+                label: None,
+                command: Command::End,
+            });
+            spec.shrink_to_fit();
+            body.shrink_to_fit();
+            let expected = ProgramUnit::Program {
+                name: String::from("min1"),
+                spec,
+                body
+            };
+            assert_eq!(expected, actual);
+        }
+    }
 
     // test all the specification statements parse correctly
     mod spec {
