@@ -45,6 +45,7 @@ pub enum TokenType {
     
     // keywords
     Program,
+    Parameter,
     If, Then, Else, EndIf,
     Do,
     Continue,
@@ -102,6 +103,7 @@ impl fmt::Display for TokenType {
     
             // keywords
             TokenType::Program => write!(f, "program"),
+            TokenType::Parameter => write!(f, "parameter"),
             TokenType::If => write!(f, "if"),
             TokenType::Then => write!(f, "then"),
             TokenType::Else => write!(f, "else"),
@@ -163,6 +165,7 @@ fn get_keyword_token(ident: &[char]) -> Result<TokenType, String> {
     let identifier: String = ident.iter().collect();
     match &identifier.to_lowercase()[..] {
         "program" => Ok(TokenType::Program),
+        "parameter" => Ok(TokenType::Parameter),
         "do" => Ok(TokenType::Do),
         "continue" => Ok(TokenType::Continue),
         "if" => Ok(TokenType::If),
@@ -775,6 +778,11 @@ mod tests {
                 assert_eq!(token, $expected);
             }
         };
+    }
+    
+    #[test]
+    fn lexes_param_kw() {
+        should_lex!("PARAMETER (x=5)", TokenType::Parameter);
     }
 
     #[test]

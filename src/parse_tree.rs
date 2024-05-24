@@ -249,6 +249,7 @@ pub struct VarDeclaration {
 #[derive(PartialEq, Debug)]
 pub enum Specification {
     TypeDeclaration (VarDeclaration),
+    Param (String, Expr),
 }
 
 impl VarDeclaration {

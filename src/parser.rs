@@ -269,6 +269,11 @@ impl Parser {
                             result.push(Specification::TypeDeclaration(d));
                         }
                     },
+                    TokenType::Parameter => {
+                        for (lhs,rhs) in self.parameter_spec() {
+                            result.push(Specification::Param(lhs,rhs));
+                        }
+                    },
                     _ => {
                         // Others are left "TODO"
                         break;
@@ -279,6 +284,46 @@ impl Parser {
         result.shrink_to_fit();
         return result;
     }
+
+    /*
+    R538 and R539 in the 1990 Standard:
+    ```ebnf
+    parameter = "PARAMETER (" name "=" expr {"," name "=" expr} ")"
+    ```
+     */
+    fn parameter_spec(&mut self) -> Vec<(String, Expr)> {
+        let mut params = Vec::<(String,Expr)>::with_capacity(8);
+        self.consume(TokenType::Parameter, "");
+        self.consume(TokenType::LeftParen, "Parameter statement expects '('");
+        while !self.is_finished() {
+            let name;
+            let id = self.advance();
+            match id.token_type {
+                TokenType::Identifier(v) => name = v.iter().collect(),
+                other => {
+                    panic!("Expected identifier, found {:?}",
+                           other);
+                    self.push_back(id);
+                    break;
+                },
+            }
+            self.consume(TokenType::Equal, "Expected equality in parameter statement");
+            let rhs = self.expr();
+            params.push((name,rhs));
+            if let Some(next) = self.peek() {
+                eprintln!("\n\n\nNext token type {:?}\n\n\n", next.token_type);
+            }
+            if self.check(TokenType::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        self.consume(TokenType::RightParen, "Parameter statement should end with ')'");
+        params.shrink_to_fit();
+        return params;
+    }
+    
     /*
     The type declaration is, well, a hot mess. Although Fortran 90 did a
     crackerjack job cleaning up FORTRAN 77's tangled allowances, we are
@@ -1605,7 +1650,10 @@ named_data_ref = identifier
             } else {
                 // CASE 3: array section, array element, or function
                 // call with arguments
-                return self.array_section_or_fn_call(v.into_iter().collect());
+                let e = self.array_section_or_fn_call(v.into_iter().collect());
+                self.consume(TokenType::RightParen,
+                             "Expected ')' closing array access or function call");
+                return e;
             }
         } else {
             panic!("This should never be reached! Expected an identifier, received {}", identifier);
@@ -1662,6 +1710,23 @@ mod tests {
                 let actual = parser.specification();
                 assert_eq!($expected, actual);
             }
+        }
+
+        
+        #[test]
+        fn f90_standard_parameter_example() {
+            let src = "      PARAMETER (MODULUS = MOD (28, 3), SENATORS = 100)";
+            let mut expected = Vec::<Specification>::with_capacity(2);
+            let mut args = Vec::<Expr>::with_capacity(2);
+            args.push(Expr::Int64(28));
+            args.push(Expr::Int64(3));
+            expected.push(Specification::Param(
+                String::from("MODULUS"),
+                Expr::NamedDataRef(String::from("MOD"), args)));
+            expected.push(Specification::Param(
+                String::from("SENATORS"),
+                Expr::Int64(100)));
+            should_parse_spec!(src, expected);
         }
 
         #[test]
