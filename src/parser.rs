@@ -810,6 +810,7 @@ Requires: indices is not empty
         let mut has_return = false;
         while !self.is_finished() {
             let mut stmt = self.statement();
+            println!("Statement = {:?}", stmt);
             has_return = has_return || stmt.is_return();
             let is_done = stmt.is_end();
             body.push(stmt);
@@ -1518,6 +1519,11 @@ Requires: indices is not empty
                     Statement { label: label,
                                 command: Command::Stop }
                 },
+                TokenType::Return => {
+                    self.advance();
+                    Statement { label: label,
+                                command: Command::Return }
+                },
                 TokenType::End => {
                     self.advance();
                     Statement { label: label,
@@ -1876,6 +1882,62 @@ mod tests {
     // test program unit parsing [PROGRAM, FUNCTION, SUBROUTINE]
     mod unit {
         use super::*;
+
+        /* van Loan and Coleman, pg 48 */
+        #[test]
+        fn real_function_f() {
+            let src = ["      REAL FUNCTION f(x)",
+                       "      REAL x",
+                       "      REAL a,b,c,d",
+                       "      f = ((a*x + b)*x + c)*x + d",
+                       "       RETURN ",
+                       "      end"].join("\n");
+            // whatever the parser determines for the RHS is good enough
+            // for me
+            let l = Lexer::new("      ((a*x + b)*x + c)*x + d".chars().collect());
+            let mut parser = Parser::new(l);
+            let rhs = parser.expr();
+            let mut spec = Vec::<Specification>::with_capacity(5);
+            for var in ["x", "a", "b", "c", "d"] {
+                spec.push(Specification::TypeDeclaration(
+                    VarDeclaration {
+                        kind: Type::Real,
+                        name: String::from(var),
+                        array: ArraySpec::Scalar,
+                    }
+                ));
+            }
+            let mut body = Vec::<Statement>::with_capacity(3);
+            body.push(Statement {
+                label: None,
+                command: Command::Assignment {
+                    lhs: Expr::Variable(String::from("f")),
+                    rhs
+                }
+            });
+            body.push(Statement {
+                label: None,
+                command: Command::Return
+            });
+            body.push(Statement {
+                label: None,
+                command: Command::End
+            });
+            let mut params = Vec::<String>::with_capacity(1);
+            params.push(String::from("x"));
+            let expected = ProgramUnit::Function {
+                name: String::from("f"),
+                params,
+                return_type: Type::Real,
+                spec,
+                body,
+            };
+            // now ask the parser for what it gives with everything else
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.program_unit();
+            assert_eq!(expected, actual);
+        }
 
         #[test]
         fn main_with_only_declarations_test() {
