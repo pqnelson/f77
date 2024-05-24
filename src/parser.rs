@@ -19,6 +19,12 @@ store the line and column numbers (and file name? and lexeme?). This
 would be useful to include when generating assembly code.
  */
 
+/*
+Lingering TODOs:
+- [ ] Handle bizarre types like "LOGICAL*3"
+- [ ] Handle "CHARACTER*n" type
+ */
+
 pub struct Parser {
     scanner: Lexer,
     current: Option<Token>,
@@ -251,36 +257,6 @@ impl Parser {
     len = size
         | "(" integer_const_expr ")"
         | "(*)";
-
-    (* (5.1 of the 1977 spec, adjusted to fit the terms in the 1990 standard) *)
-    array_spec = dimension_declarator {"," dimension_declarator };
-    dimension_declarator = [lower_bound ":"] upper_bound;
-    
-    (* ... or R501 et seq of the 1990 spec *)
-    type_declaration = type_spec entity_decl_list;
-    
-    size = unsigned_nonzero_integer_const;
-
-    entity_decl_list = name ["(" array_spec ")"] ["*" char_length];
-
-    char_length = size;
-
-
-    (* R512 *)
-    array_spec = explicit_shape_spec {"," explicit_shape_spec}
-               | assumed_shape_spec {"," assumed_shape_spec}
-               | deferred_shape_spec {"," deferred_shape_spec};
-
-    (* R513 *)
-    explicit_shape_spec = [lower_bound ":"] upper_bound;
-    lower_bound = specification_expr; (* R514 *)
-    upper_bound = specification_expr; (* R515 *)
-
-    (* R516 *)
-    assumed_shape_spec = [lower_bound] ":";
-
-    (* R517 *)
-    deferred_shape_spec = ":";
     ```
      */
     fn specification(&mut self) -> Vec<Specification> {
@@ -392,7 +368,43 @@ impl Parser {
                         },
                     }
                 },
-                BaseType::Integer => { result = Type::Integer; },
+                BaseType::Integer => { 
+                    match width {
+                        1..=3 => {
+                            eprintln!("Line {} Warning: INTEGER*{} invalid width, rounding to INTEGER*4",
+                                      self.line,
+                                      width);
+                            result = Type::Integer;
+                        },
+                        4 => {
+                            result = Type::Integer;
+                        },
+                        5..=7 => {
+                            eprintln!("Line {} Warning: INTEGER*{} invalid width, rounding to INTEGER*8",
+                                      self.line,
+                                      width);
+                            result = Type::Integer64;
+                        },
+                        8 => {
+                            result = Type::Integer64;
+                        },
+                        9..=15 => {
+                            eprintln!("Line {} Warning: INTEGER*{} invalid width, rounding to INTEGER*16",
+                                      self.line,
+                                      width);
+                            result = Type::Integer128;
+                        },
+                        16 => {
+                            result = Type::Integer128;
+                        },
+                        other => {
+                            eprintln!("Line {} Warning: INTEGER*{} invalid width, defaulting to INTEGER*8",
+                                      self.line,
+                                      width);
+                            result = Type::Integer64;
+                        },
+                    }
+                },
                 BaseType::Character => { result = Type::Character; },
                 BaseType::Logical => { result = Type::Logical; },
             }
@@ -1652,14 +1664,42 @@ mod tests {
             }
         }
 
-        /*
-        Test other array specifications:
-        - REAL windspeed(-3:15)
-        - REAL windspeed(3:)
-        - REAL windspeed(:)
-        - REAL windspeed(-3:15,:*) --- should fail
-        - REAL windspeed(-3,15,7:*)
-         */
+        #[test]
+        fn explicit_array_spec_with_negative_start() {
+            let src = "      REAL C(-3:12)";
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut c_spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
+            c_spec.push((Some(Expr::Unary(UnOp::Minus,
+                                          Box::new(Expr::Int64(3)))),
+                         Expr::Int64(12)));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("C"),
+                    array: ArraySpec::ExplicitShape(c_spec),
+                }
+            ));
+            should_parse_spec!(src, expected);
+        }
+
+        #[test]
+        #[should_panic]
+        fn malformed_array_spec() {
+            let src = "      REAL C(-3:12, :*)";
+            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut c_spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
+            c_spec.push((Some(Expr::Unary(UnOp::Minus,
+                                          Box::new(Expr::Int64(3)))),
+                         Expr::Int64(12)));
+            expected.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("C"),
+                    array: ArraySpec::AssumedSize(c_spec, None),
+                }
+            ));
+            should_parse_spec!(src, expected);
+        }
 
         #[test]
         fn assumed_size_array_with_lower_bound() {
@@ -1811,7 +1851,138 @@ mod tests {
 
             should_parse_spec!(src, expected);
         }
-            
+
+        #[macro_export]
+        macro_rules! should_parse_scalar_spec {
+            ( $text:expr, $expected_name:expr, $expected_type:expr ) => {
+                let l = Lexer::new($text.chars().collect());
+                let mut parser = Parser::new(l);
+                let actual = parser.specification();
+                let mut expected = Vec::<Specification>::with_capacity(1);
+                expected.push(Specification::TypeDeclaration(
+                    VarDeclaration {
+                        kind: $expected_type,
+                        name: String::from($expected_name),
+                        array: ArraySpec::Scalar,
+                    }
+                ));
+                assert_eq!(expected, actual);
+            }
+        }
+
+        #[test]
+        fn spec_real1() {
+            let src = "      REAL*1 D";
+            should_parse_scalar_spec!(src, "D", Type::Real);
+        }
+
+        #[test]
+        fn spec_real2() {
+            let src = "      REAL*2 D";
+            should_parse_scalar_spec!(src, "D", Type::Real);
+        }
+        
+        #[test]
+        fn spec_real3() {
+            let src = "      REAL*3 D";
+            should_parse_scalar_spec!(src, "D", Type::Real);
+        }
+        
+        #[test]
+        fn spec_real4() {
+            let src = "      REAL*4 D";
+            should_parse_scalar_spec!(src, "D", Type::Real);
+        }
+        
+        #[test]
+        fn spec_real5() {
+            let src = "      REAL*5 D";
+            should_parse_scalar_spec!(src, "D", Type::Real64);
+        }
+        
+        #[test]
+        fn spec_real6() {
+            let src = "      REAL*6 D";
+            should_parse_scalar_spec!(src, "D", Type::Real64);
+        }
+        
+        #[test]
+        fn spec_real7() {
+            let src = "      REAL*7 D";
+            should_parse_scalar_spec!(src, "D", Type::Real64);
+        }
+        
+        #[test]
+        fn spec_real8() {
+            let src = "      REAL*8 D";
+            should_parse_scalar_spec!(src, "D", Type::Real64);
+        }
+        
+        #[test]
+        fn spec_real9() {
+            let src = "      REAL*9 D";
+            should_parse_scalar_spec!(src, "D", Type::Real128);
+        }
+        
+        #[test]
+        fn spec_real10() {
+            let src = "      REAL*10 D";
+            should_parse_scalar_spec!(src, "D", Type::Real128);
+        }
+        
+        #[test]
+        fn spec_real11() {
+            let src = "      REAL*11 D";
+            should_parse_scalar_spec!(src, "D", Type::Real128);
+        }
+        
+        #[test]
+        fn spec_real12() {
+            let src = "      REAL*12 D";
+            should_parse_scalar_spec!(src, "D", Type::Real128);
+        }
+        
+        #[test]
+        fn spec_real13() {
+            let src = "      REAL*13 D";
+            should_parse_scalar_spec!(src, "D", Type::Real128);
+        }
+        
+        #[test]
+        fn spec_real14() {
+            let src = "      REAL*14 D";
+            should_parse_scalar_spec!(src, "D", Type::Real128);
+        }
+        
+        #[test]
+        fn spec_real15() {
+            let src = "      REAL*15 D";
+            should_parse_scalar_spec!(src, "D", Type::Real128);
+        }
+        
+        #[test]
+        fn spec_real16() {
+            let src = "      REAL*16 D";
+            should_parse_scalar_spec!(src, "D", Type::Real128);
+        }
+        
+        #[test]
+        fn spec_int4() {
+            let src = "      INTEGER*4 D";
+            should_parse_scalar_spec!(src, "D", Type::Integer);
+        }
+        
+        #[test]
+        fn spec_int8() {
+            let src = "      INTEGER*8 D";
+            should_parse_scalar_spec!(src, "D", Type::Integer64);
+        }
+        
+        #[test]
+        fn spec_int16() {
+            let src = "      INTEGER*16 D";
+            should_parse_scalar_spec!(src, "D", Type::Integer128);
+        }
 
         #[test]
         fn should_parse_multiple_decls() {
