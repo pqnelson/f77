@@ -134,6 +134,7 @@ pub enum Command {
         rhs: Expr
     },
     Stop,
+    Return,
     End,
     Illegal // should never be reached
 }
@@ -154,6 +155,9 @@ impl Statement {
     }
     pub fn is_stop(&mut self) -> bool {
         matches!(self.command, Command::Stop)
+    }
+    pub fn is_return(&mut self) -> bool {
+        matches!(self.command, Command::Return)
     }
 }
 
@@ -269,5 +273,29 @@ pub enum ProgramUnit {
         spec: Vec<Specification>,
         body: Vec<Statement>,
     },
+    Function {
+        name: String,
+        return_type: Type,
+        params: Vec<String>,
+        spec: Vec<Specification>,
+        body: Vec<Statement>,
+    },
+    Subroutine {
+        name: String,
+        params: Vec<String>,
+        spec: Vec<Specification>,
+        body: Vec<Statement>,
+    },
     Empty,
+}
+
+impl ProgramUnit {
+    pub fn is_named(self, the_name: &String) -> bool {
+        match self {
+            ProgramUnit::Program {name, ..} => *the_name == name,
+            ProgramUnit::Function {name, ..} => *the_name == name,
+            ProgramUnit::Subroutine {name, ..} => *the_name == name,
+            _ => false
+        }
+    }
 }

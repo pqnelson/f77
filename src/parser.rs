@@ -219,6 +219,9 @@ impl Parser {
         if let Some(token) = self.peek() {
             match token.token_type {
                 TokenType::Program => return self.program(),
+                TokenType::Subroutine => panic!("Subroutine parsing not supported yet"),
+                TokenType::Function => return self.function(),
+                TokenType::Type(kind) => return self.function(),
                 _ => panic!("Expected a program unit, found {token}"),
             }
         }
@@ -303,8 +306,6 @@ impl Parser {
                 other => {
                     panic!("Expected identifier, found {:?}",
                            other);
-                    self.push_back(id);
-                    break;
                 },
             }
             self.consume(TokenType::Equal, "Expected equality in parameter statement");
@@ -481,8 +482,6 @@ impl Parser {
                 other => {
                     panic!("Expected identifier, found {:?}",
                            other);
-                    self.push_back(id);
-                    break;
                 },
             }
             let array = self.array_spec();
@@ -730,6 +729,147 @@ Requires: indices is not empty
                line);
     }
 
+    fn dummy_args(&mut self) -> Vec<String> {
+        let mut args = Vec::<String>::with_capacity(8);
+        self.consume(TokenType::LeftParen, "Dummy arguments expected to start with '('");
+        while !self.is_finished() {
+            let token = self.advance();
+            match token.token_type {
+                TokenType::Identifier(v) => args.push(v.iter().collect()),
+                TokenType::RightParen => {
+                    args.shrink_to_fit();
+                    return args;
+                },
+                other => panic!("Unknown token in dummy arguments: {other}"),
+            }
+            if self.check(TokenType::Comma) {
+                self.advance();
+            }
+        }
+        self.consume(TokenType::RightParen, "Dummy arguments expected to end with ')'");
+        args.shrink_to_fit();
+        return args;
+    }
+
+    fn determine_type_from_spec(&mut self, var_name: &String, spec: &Vec<Specification>)
+                                -> Type {
+        for entry in spec {
+            if let Specification::TypeDeclaration(VarDeclaration{kind,
+                                                                 name, ..}) = entry {
+                if name == var_name {
+                    return *kind;
+                }
+            }
+        }
+        panic!("Return type for {var_name} not declared anywhere");
+    }
+
+    /*
+    Following the style of the Sun F77 compiler, the declared type for
+    the function can be something like `REAL*16` (or some other
+    specified width).
+
+    Also, allow support for F90-style declarations where the return type
+    is among the variable specification.
+     */
+    fn function(&mut self) -> ProgramUnit {
+        let line = self.line;
+        let return_type;
+        let mut type_prefix: Option<Type> = None;
+        // parse the return type and eat the "function" keyword
+        if let Some(token) = self.peek() {
+            match &token.token_type {
+                TokenType::Type(kind) => {
+                    type_prefix = Some(self.determine_type());
+                    self.consume(TokenType::Function, "");
+                },
+                TokenType::Function => {
+                    self.advance();
+                },
+                other => {
+                    panic!("Expected 'function' or return type, found {other}");
+                },
+            }
+        }
+        // get the name of the function
+        let token = self.advance();
+        let name = match token.token_type {
+            TokenType::Identifier(v) => v.into_iter().collect(),
+            other => panic!("Program expected name, found {other}"),
+        };
+        // get the "dummy arguments" [parameters]
+        let params = self.dummy_args();
+        // parse the body of the function
+        let spec = self.specification();
+        if let Some(kind) = type_prefix {
+            return_type = kind;
+        } else /* if F90-style function declaration */ {
+            return_type = self.determine_type_from_spec(&name, &spec);
+        }
+        let mut body = Vec::<Statement>::with_capacity(32);
+        let mut has_return = false;
+        while !self.is_finished() {
+            let mut stmt = self.statement();
+            has_return = has_return || stmt.is_return();
+            let is_done = stmt.is_end();
+            body.push(stmt);
+            if is_done {
+                break;
+            }
+        }
+        if !has_return {
+            panic!("LINE {} function has no return statement",
+                   line);
+        }
+        return ProgramUnit::Function { name, return_type, params, spec, body };
+    }
+
+    /* Subroutines *must* include a `return` statement.
+
+    ```ebnf
+    subroutine = "subroutine" name dummy-args newline
+                  specification
+                  statements
+                 "return" newline
+                 "end"
+    ```
+     */
+    fn subroutine(&mut self) -> ProgramUnit {
+        let line = self.line;
+        self.consume(TokenType::Subroutine, "");
+        // get the name of the function
+        let token = self.advance();
+        let name = match token.token_type {
+            TokenType::Identifier(v) => v.into_iter().collect(),
+            other => panic!("Program expected name, found {other}"),
+        };
+        // get the "dummy arguments" [parameters]
+        let params = self.dummy_args();
+        // start parsing the body of the subroutine
+        let spec = self.specification();
+        let mut body = Vec::<Statement>::with_capacity(32);
+        let mut has_return = false;
+        while !self.is_finished() {
+            let mut stmt = self.statement();
+            has_return = has_return || stmt.is_return();
+            let is_done = stmt.is_end();
+            body.push(stmt);
+            if is_done {
+                break;
+            }
+        }
+        if !has_return {
+            panic!("LINE {} subroutine has no return statement",
+                   line);
+        }
+        return ProgramUnit::Subroutine { name, params, spec, body };
+    }
+
+    /*
+    ```ebnf
+    program = "program" name [specification] {statement} "end";
+    ```
+     */
     fn program(&mut self) -> ProgramUnit {
         self.consume(TokenType::Program, "");
         let token = self.advance();
@@ -739,7 +879,6 @@ Requires: indices is not empty
         };
         let spec = self.specification();
         let mut body = Vec::<Statement>::with_capacity(32);
-        let mut has_stopped = false;
         while !self.is_finished() {
             let mut stmt = self.statement();
             if stmt.is_stop() {
@@ -747,17 +886,12 @@ Requires: indices is not empty
                 let mut stmt2 = self.statement();
                 if !stmt2.is_end() {
                     panic!("main program 'stop' should follow by 'end', found {:?}", stmt2);
-                    body.push(stmt2);
                 } else {
                     body.push(stmt2);
                     break;
                 }
             } else if stmt.is_end() {
                 panic!("WARNING: main program 'end' must be preceded by 'stop'");
-                body.push(stmt);
-                if has_stopped {
-                    break;
-                }
             } else {
                 body.push(stmt);
             }
