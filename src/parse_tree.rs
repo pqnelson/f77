@@ -3,6 +3,24 @@ use crate::lexer::{
     Token
 };
 
+/*
+Visitors in Rust seem to be frowned upon. I'm not sure what to think
+about it, because the Rust compiler uses the visitor pattern [1].
+
+There is an interesting discussion on reddit [2] about the visitor
+pattern and AST data structures.
+
+The Rust pattern website has a small example of visitors [3].
+
+The Molten compiler/language uses the visitor pattern for typechecking [4],
+which may be interesting to peruse further.
+
+[1] https://doc.rust-lang.org/beta/nightly-rustc/rustc_ast/visit/trait.Visitor.html
+[2] https://www.reddit.com/r/rust/comments/11q7l8m/best_practices_for_ast_design_in_rust/
+[3] https://rust-unofficial.github.io/patterns/patterns/behavioural/visitor.html
+[4] https://github.com/transistorfet/molten/blob/8487b4018f1eecbc1cb15e32c2652a6f0fed0941/src/analysis/typecheck.rs#L10
+ */
+
 // pub mod parse_tree {
 //    use super::*;
 #[derive(PartialEq, Debug)]
@@ -168,17 +186,29 @@ pub enum ProgramUnitKind {
     Function,
 }
 
+/*
+We could use the fact that the Real mask equals `0x0d` and the Integer
+mask equals `0x0e`, but also we could note that `Type::Real & kind` is
+nonzero for `Type::Real`, `Type::Real64`, and `Type::Real128`. (Similar
+remarks apply for `Type::Integer & kind`.)
+
+These flags are chosen for compatibility with `lexer::BaseType` flags.
+
+Arguably, this can be abused for external functions by treating
+`Type::External` as a mask instead of a flag.
+ */
 #[derive(PartialEq, Debug, Copy, Clone)]
+#[repr(u8)]
 pub enum Type {
-    Integer,
-    Real,
-    Character,
-    Logical,
-    Real64,
-    Real128,
-    Integer64,
-    Integer128,
-    External // function reference
+    Logical    = 0x10,  // 0b0001_0000
+    Real       = 0x01,  // 0b0000_0001
+    Integer    = 0x02,  // 0b0000_0010
+    Character  = 0x20,  // 0b0010_0000
+    Real64     = 0x05,  // 0b0000_0101
+    Real128    = 0x09,  // 0b0000_1001
+    Integer64  = 0x06,  // 0b0000_0110
+    Integer128 = 0x0a,  // 0b0000_1010
+    External   = 0x40,  // 0b0100_0000 function reference
 }
 
 /*

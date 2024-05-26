@@ -2,9 +2,18 @@ use std::fmt;
 
 // TODO: consider switching back to using String instead of Vec<char>,
 //       or at least switch to Vec<u8>...
+
+/*
+Compare to `parse_tree::Type`, where the flags are chosen for
+compatibility and the ability to mask properly.
+ */
 #[derive(PartialEq, Debug, Copy, Clone)] 
+#[repr(u8)]
 pub enum BaseType {
-    Integer, Real, Character, Logical
+    Logical   = 0x10,
+    Real      = 0x01,
+    Integer   = 0x02,
+    Character = 0x20,
 }
 
 impl fmt::Display for BaseType {
