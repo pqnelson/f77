@@ -1954,7 +1954,7 @@ mod tests {
             let mut parser = Parser::new(l);
             let actual = parser.program_unit();
             assert_eq!(expected, actual);
-            assert!(actual.is_named(String::from("f")));
+            assert!(actual.is_named("f"));
         }
 
         #[test]
@@ -1999,7 +1999,7 @@ mod tests {
                 body
             };
             assert_eq!(expected, actual);
-            assert!(actual.is_named(String::from("min1")));
+            assert!(actual.is_named("min1"));
         }
         
         /* van Loan & Coleman, "Handbook for Matrix

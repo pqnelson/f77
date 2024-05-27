@@ -79,10 +79,16 @@ At the level of the parse tree, we don't know the difference between a
 function call and an array access [unless the array access involves
 slicing the array].
 
+We will later, during semantic analysis, replace variables by
+"flavored de Bruijn indices" depending on if it refers to a function,
+a subroutine, or a local variable. Its value is precisely the index for
+the `Program.functions`, `Program.subroutines`, or `ProgramUnit::*.spec`
+entry.
+
 The grammar for arrays and function calls are represented by the
 `NameDataRef` node.
 
-```
+```ebnf
 Name ::= Identifier
 NameDataRef ::= Name ComplexDataRefTail*
 ComplexDataRefTail ::= "(" SectionSubscriptList ")"
@@ -94,6 +100,29 @@ SubscriptTripletTail ::= ":" Expr?
 FunctionCallExpr ::= Name "(" ")"
 ```
  */
+/*
+TODO: It would be nice to parametrize the Expr structure by the type of
+variable representation, so we could effectively write something along
+the lines of:
+```rust
+pub enum Expr<T> {
+   // ....
+   Variable(T),
+   FunCall(T, Vec<Expr>),
+   ArrayElement(T, Vec<Expr>),
+   ArraySection(T, Vec<Expr>),
+   // ...
+}
+```
+This would have been nice, so I could have then disambiguated named data
+references in a function taking an `Expr<String>` and returning a `Expr<usize>`.
+
+However, this would require propagating the generic parameter `<T>` to
+statements, array specifications, variable declarations, program units,
+and programs (and possibly quite a bit more than I realize at the moment).
+This requires a substantial rewrite, compared to adding three or six new
+lines to the enumeration as it stands.
+ */
 #[derive(PartialEq, Debug)]
 pub enum Expr {
     // literals
@@ -104,6 +133,10 @@ pub enum Expr {
     Int64(i64),
     Logical(bool),
     Variable(String),
+    // de Bruijn indices for various named data reference disambiguation
+    VariableIndex(usize),
+    FunctionIndex(usize),
+    SubroutineIndex(usize),
     // TODO: consider adding a Subscript(Box<Expr>) to remind myself
     //       of a lingering burden to check during typechecking?
     // array slice section: start, stop, stride
@@ -116,6 +149,10 @@ pub enum Expr {
     FunCall(String, Vec<Expr>),
     ArrayElement(String, Vec<Expr>), // e.g., "MYARRAY(3,65,2)"
     ArraySection(String, Vec<Expr>), // e.g., "MYARRAY(3:65)"
+    // composite expressions transformed to use de Bruijn indices
+    IndexedFunCall(usize, Vec<Expr>),
+    IndexedArrayElement(usize, Vec<Expr>),
+    IndexedArraySection(usize, Vec<Expr>),
     // placeholder, should never be forced to arrive here
     ErrorExpr,
 }
@@ -312,7 +349,7 @@ pub enum ProgramUnit {
     Empty,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum ProgramUnitKind {
     Program,
     Subroutine,
@@ -334,7 +371,7 @@ impl ProgramUnit {
         matches!(self, ProgramUnit::Empty)
     }
 
-    pub fn is_named(&self, the_name: String) -> bool {
+    pub fn is_named(&self, the_name: &str) -> bool {
         return matches!(self, ProgramUnit::Program {name: the_name, ..})
             || matches!(self, ProgramUnit::Function {name: the_name, ..})
             || matches!(self, ProgramUnit::Subroutine {name: the_name, ..});
@@ -388,7 +425,18 @@ impl Program {
             subroutines: Vec::<ProgramUnit>::with_capacity(8),
         }
     }
-    
+
+    /*
+    1. TODO (F90+): if you want to allow function overloading, then you need to
+    reconsider this bit of code. The FORTRAN 77 Standard didn't even
+    consider this possibility, because that was ahead of its time. But
+    I think Fortran 90+ supports function overloading, and you'd need to
+    change this logic to reflect that possibility.
+
+    2. TODO (performance): this is the simplest/worst implementation, but I
+    want to get this done quickly. We can profile the code and see if
+    hashmaps are better (they usually aren't in Rust).
+     */
     pub fn has_unit_sharing_name(&self, unit: &ProgramUnit) -> bool {
         if self.program.shares_name(unit) {
             return true;
@@ -405,15 +453,52 @@ impl Program {
         }
         return false;
     }
+
+    /**
+    Given a name, return the `FunctionIndex` or `SubroutineIndex` for
+    the name (if there's a matching function or subroutine). When
+    there's no match, `None` is returned.
+     */
+    pub fn index_for(self, name: String) -> Option<Expr> {
+        for (idx, f) in self.functions.iter().enumerate() {
+            if f.is_named(&name) {
+                return Some(Expr::FunctionIndex(idx));
+            }
+        }
+        for (idx, sub) in self.subroutines.iter().enumerate() {
+            if sub.is_named(&name) {
+                return Some(Expr::SubroutineIndex(idx));
+            }
+        }
+        return None;
+    }
+
+    /**
+    Adds a new program unit to the representation of the
+    program. If the new program unit is `ProgramUnit::Empty`, then
+    nothing is done.
+
+    Mutates the `Program` structure.
+
+    # Panics
     
+    1. Panics if there are two program units with the same name.
+
+    2. Panics if you try to add a `ProgramUnit::Program` when one has
+    already been pushed.
+
+    # Returns
+    
+    Returns nothing.
+     */
     pub fn push(&mut self, unit: ProgramUnit) {
         if self.has_unit_sharing_name(&unit) {
             // panic if there are two units sharing the same name
             panic!("Two program units share name '{}'",
                    unit.get_name());
         }
-        let kind = unit.kind();
-        match kind {
+        // let kind = unit.kind();
+        match unit.kind() {
             ProgramUnitKind::Program => {
                 if ProgramUnit::Empty != self.program {
                     // panic
