@@ -179,13 +179,6 @@ impl Statement {
     }
 }
 
-#[derive(PartialEq, Debug)]
-pub enum ProgramUnitKind {
-    Program,
-    Subroutine,
-    Function,
-}
-
 /*
 We could use the fact that the Real mask equals `0x0d` and the Integer
 mask equals `0x0e`, but also we could note that `Type::Real & kind` is
@@ -263,7 +256,7 @@ declarations, etc. See section 8 of the Fortran 77 Standard.
 
 ```ebnf
 specification_statement = type_declaration
-                        | parameter; (* not yet *)
+                        | parameter;
 
 unsupported_specification_statement = 
             equivalence (* no support *)
@@ -319,13 +312,104 @@ pub enum ProgramUnit {
     Empty,
 }
 
+#[derive(PartialEq, Debug)]
+pub enum ProgramUnitKind {
+    Program,
+    Subroutine,
+    Function,
+    Empty,
+}
+
+
 impl ProgramUnit {
-    pub fn is_named(self, the_name: &String) -> bool {
+    pub fn kind(&self) -> ProgramUnitKind {
+        match *self {
+            ProgramUnit::Program {..} => ProgramUnitKind::Program,
+            ProgramUnit::Function {..} => ProgramUnitKind::Function,
+            ProgramUnit::Subroutine {..} => ProgramUnitKind::Subroutine,
+            ProgramUnit::Empty => ProgramUnitKind::Empty,
+        }
+    }
+
+    pub fn is_named(&self, the_name: &String) -> bool {
         match self {
-            ProgramUnit::Program {name, ..} => *the_name == name,
-            ProgramUnit::Function {name, ..} => *the_name == name,
-            ProgramUnit::Subroutine {name, ..} => *the_name == name,
+            ProgramUnit::Program {name, ..} => *the_name == *name,
+            ProgramUnit::Function {name, ..} => *the_name == *name,
+            ProgramUnit::Subroutine {name, ..} => *the_name == *name,
             _ => false
+        }
+    }
+
+    pub fn name(&self) -> String {
+        match self {
+            ProgramUnit::Program {name, ..} => name.clone(),
+            ProgramUnit::Function {name, ..} => name.clone(),
+            ProgramUnit::Subroutine {name, ..} => name.clone(),
+            _ => String::from("")
+        }
+    }
+
+    pub fn shares_name(&self, other: &ProgramUnit) -> bool {
+        let name = other.name();
+        self.is_named(&name)
+    }
+}
+
+pub struct Program {
+    pub program: ProgramUnit,
+    pub functions: Vec<ProgramUnit>,
+    pub subroutines: Vec<ProgramUnit>,
+}
+
+impl Program {
+    pub fn new() -> Self {
+        Self {
+            program: ProgramUnit::Empty,
+            functions: Vec::<ProgramUnit>::with_capacity(8),
+            subroutines: Vec::<ProgramUnit>::with_capacity(8),
+        }
+    }
+    
+    pub fn has_unit_sharing_name(&self, unit: &ProgramUnit) -> bool {
+        if self.program.shares_name(unit) {
+            return true;
+        }
+        for f in &self.functions {
+            if f.shares_name(unit) {
+                return true;
+            }
+        }
+        for sub in &self.subroutines {
+            if sub.shares_name(unit) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    pub fn push(&mut self, unit: ProgramUnit) {
+        if self.has_unit_sharing_name(&unit) {
+            // panic if there are two units sharing the same name
+            panic!("Two program units share name '{}'",
+                   unit.name());
+        }
+        let kind = unit.kind();
+        match kind {
+            ProgramUnitKind::Program => {
+                if ProgramUnit::Empty != self.program {
+                    // panic
+                    panic!("Trying to have two main programs");
+                } else {
+                    self.program = unit;
+                }
+            },
+            ProgramUnitKind::Function => {
+                self.functions.push(unit);
+            },
+            ProgramUnitKind::Subroutine => {
+                self.subroutines.push(unit);
+            },
+            ProgramUnitKind::Empty => {},
         }
     }
 }

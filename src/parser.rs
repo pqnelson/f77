@@ -212,6 +212,23 @@ impl Parser {
         }
     }
 
+
+    /**
+    Assemble the program's parse tree.
+
+    This is the "big red button" you're probably looking for, which
+    combines all the other helper functions defined in the parser.
+
+    Panics if two program units share the same name.
+    */
+    pub fn parse_all(&mut self) -> Program {
+        let mut nodes = Program::new();
+        while !self.is_finished() {
+            nodes.push(self.program_unit());
+        }
+        return nodes;
+    }
+    
     /* *****************************************************************
     Program Unit
      ********************************************************** */
