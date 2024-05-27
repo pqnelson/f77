@@ -320,7 +320,6 @@ pub enum ProgramUnitKind {
     Empty,
 }
 
-
 impl ProgramUnit {
     pub fn kind(&self) -> ProgramUnitKind {
         match *self {
@@ -331,16 +330,17 @@ impl ProgramUnit {
         }
     }
 
-    pub fn is_named(&self, the_name: &String) -> bool {
-        match self {
-            ProgramUnit::Program {name, ..} => *the_name == *name,
-            ProgramUnit::Function {name, ..} => *the_name == *name,
-            ProgramUnit::Subroutine {name, ..} => *the_name == *name,
-            _ => false
-        }
+    pub fn is_empty(self) -> bool {
+        matches!(self, ProgramUnit::Empty)
     }
 
-    pub fn name(&self) -> String {
+    pub fn is_named(&self, the_name: String) -> bool {
+        return matches!(self, ProgramUnit::Program {name: the_name, ..})
+            || matches!(self, ProgramUnit::Function {name: the_name, ..})
+            || matches!(self, ProgramUnit::Subroutine {name: the_name, ..});
+    }
+
+    pub fn get_name(&self) -> String {
         match self {
             ProgramUnit::Program {name, ..} => name.clone(),
             ProgramUnit::Function {name, ..} => name.clone(),
@@ -350,8 +350,27 @@ impl ProgramUnit {
     }
 
     pub fn shares_name(&self, other: &ProgramUnit) -> bool {
-        let name = other.name();
-        self.is_named(&name)
+        match (self, other) {
+            (ProgramUnit::Program {name: a,..},
+             ProgramUnit::Program {name: b,..})
+                | (ProgramUnit::Program {name: a,..},
+                   ProgramUnit::Function {name: b,..})
+                | (ProgramUnit::Program {name: a,..},
+                   ProgramUnit::Subroutine {name: b,..})
+                | (ProgramUnit::Function {name: a,..},
+                   ProgramUnit::Program {name: b,..})
+                | (ProgramUnit::Function {name: a,..},
+                   ProgramUnit::Function {name: b,..})
+                | (ProgramUnit::Function {name: a,..},
+                   ProgramUnit::Subroutine {name: b,..})
+                | (ProgramUnit::Subroutine {name: a,..},
+                   ProgramUnit::Program {name: b,..})
+                | (ProgramUnit::Subroutine {name: a,..},
+                   ProgramUnit::Function {name: b,..})
+                | (ProgramUnit::Subroutine {name: a,..},
+                   ProgramUnit::Subroutine {name: b,..}) => a == b,
+            _ => false,
+        }
     }
 }
 
@@ -391,7 +410,7 @@ impl Program {
         if self.has_unit_sharing_name(&unit) {
             // panic if there are two units sharing the same name
             panic!("Two program units share name '{}'",
-                   unit.name());
+                   unit.get_name());
         }
         let kind = unit.kind();
         match kind {
