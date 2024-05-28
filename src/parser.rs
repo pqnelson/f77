@@ -1931,7 +1931,7 @@ mod tests {
                     array: ArraySpec::AssumedSize(bdim_shape, None),
                 }
             ));
-            let mut inner_body = Vec::<Statement>::with_capacity(1);
+            let mut inner_body = Vec::<Statement::<Expr>>::with_capacity(1);
             
             let l = Lexer::new("      c*B(i,j)".chars().collect());
             let mut parser = Parser::new(l);
@@ -1939,11 +1939,11 @@ mod tests {
             let l = Lexer::new("      B(i,j)".chars().collect());
             let mut parser = Parser::new(l);
             let lhs = parser.expr();
-            inner_body.push(Statement{
+            inner_body.push(Statement::<Expr> {
                 label: None,
                 command: Command::Assignment { lhs, rhs },
             });
-            let inner = Statement {
+            let inner = Statement::<Expr> {
                 label: None,
                 command: Command::LabelDo {
                     target_label: 5,
@@ -1958,9 +1958,9 @@ mod tests {
                     })
                 }
             };
-            let mut outer_body = Vec::<Statement>::with_capacity(1);
+            let mut outer_body = Vec::<Statement::<Expr>>::with_capacity(1);
             outer_body.push(inner);
-            let outer = Statement {
+            let outer = Statement::<Expr> {
                 label: None,
                 command: Command::LabelDo {
                     target_label: 10,
@@ -1975,13 +1975,13 @@ mod tests {
                     })
                 }
             };
-            let mut body = Vec::<Statement>::with_capacity(6);
+            let mut body = Vec::<Statement::<Expr>>::with_capacity(6);
             body.push(outer);
-            body.push(Statement {
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::Return,
             });
-            body.push(Statement {
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::End,
             });
@@ -1990,7 +1990,7 @@ mod tests {
             for var in ["c", "m", "n", "B", "bdim"] {
                 params.push(String::from(var));
             }
-            let expected = ProgramUnit::Subroutine {
+            let expected = ProgramUnit::<Expr>::Subroutine {
                 name: String::from("scale1"),
                 params,
                 spec,
