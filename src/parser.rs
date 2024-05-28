@@ -7,22 +7,10 @@ use crate::lexer::{
 use crate::parse_tree::*;
 
 /*
-Current plans:
-1. Program Units
-
-I found it useful to write the grammar rules as comments before each
-function. This is a simple recursive descent parser, so production rules
-correspond to function names.
-
-Also, it may be useful to refactor out an `info` struct in the lexer to
-store the line and column numbers (and file name? and lexeme?). This
-would be useful to include when generating assembly code.
- */
-
-/*
 Lingering TODOs:
 - [ ] Handle bizarre types like "LOGICAL*3"
 - [ ] Handle "CHARACTER*n" type
+- [ ] Add tests for Fortran 90 style function definitions
  */
 
 pub struct Parser {
@@ -236,7 +224,7 @@ impl Parser {
         if let Some(token) = self.peek() {
             match token.token_type {
                 TokenType::Program => return self.program(),
-                TokenType::Subroutine => panic!("Subroutine parsing not supported yet"),
+                TokenType::Subroutine => return self.subroutine(),
                 TokenType::Function => return self.function(),
                 TokenType::Type(kind) => return self.function(),
                 _ => panic!("Expected a program unit, found {token}"),
@@ -1900,6 +1888,151 @@ mod tests {
     mod unit {
         use super::*;
 
+        /* van Loan and Coleman, pg 62 */
+        #[test]
+        fn subroutine_scale1() {
+            let src = ["      subroutine scale1(c, m, n, B, bdim)",
+                       "      INTEGER m, n, bdim",
+                       "      REAL c, B(bdim, *)",
+                       "C",
+                       "C  Overwrites the m-by-n matrix with cB.",
+                       "C  The array B has row dimension bdim.",
+                       "C",
+                       "      do 10 j = 1,n",
+                       "        do 5 i=1,m",
+                       "          B(i,j) = c*B(i,j)",
+                       "   5    continue",
+                       "  10  continue",
+                       "       RETURN ",
+                       "      end"].join("\n");
+            let mut spec = Vec::<Specification>::with_capacity(5);
+            for var in ["m", "n", "bdim"] {
+                spec.push(Specification::TypeDeclaration(
+                    VarDeclaration {
+                        kind: Type::Integer,
+                        name: String::from(var),
+                        array: ArraySpec::Scalar,
+                    }
+                ));
+            }
+            spec.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("c"),
+                    array: ArraySpec::Scalar,
+                }
+            ));
+            let mut bdim_shape = Vec::<(Option<Expr>,Expr)>::with_capacity(1);
+            bdim_shape.push((None, Expr::Variable(String::from("bdim"))));
+            spec.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("B"),
+                    array: ArraySpec::AssumedSize(bdim_shape, None),
+                }
+            ));
+            let mut inner_body = Vec::<Statement>::with_capacity(1);
+            
+            let l = Lexer::new("      c*B(i,j)".chars().collect());
+            let mut parser = Parser::new(l);
+            let rhs = parser.expr();
+            let l = Lexer::new("      B(i,j)".chars().collect());
+            let mut parser = Parser::new(l);
+            let lhs = parser.expr();
+            inner_body.push(Statement{
+                label: None,
+                command: Command::Assignment { lhs, rhs },
+            });
+            let inner = Statement {
+                label: None,
+                command: Command::LabelDo {
+                    target_label: 5,
+                    var: Expr::Variable(String::from("i")),
+                    start: Expr::Int64(1),
+                    stop: Expr::Variable(String::from("m")),
+                    stride: None,
+                    body: inner_body,
+                    terminal: Box::new(Statement {
+                        label: Some(5),
+                        command: Command::Continue,
+                    })
+                }
+            };
+            let mut outer_body = Vec::<Statement>::with_capacity(1);
+            outer_body.push(inner);
+            let outer = Statement {
+                label: None,
+                command: Command::LabelDo {
+                    target_label: 10,
+                    var: Expr::Variable(String::from("j")),
+                    start: Expr::Int64(1),
+                    stop: Expr::Variable(String::from("n")),
+                    stride: None,
+                    body: outer_body,
+                    terminal: Box::new(Statement {
+                        label: Some(10),
+                        command: Command::Continue,
+                    })
+                }
+            };
+            let mut body = Vec::<Statement>::with_capacity(6);
+            body.push(outer);
+            body.push(Statement {
+                label: None,
+                command: Command::Return,
+            });
+            body.push(Statement {
+                label: None,
+                command: Command::End,
+            });
+            body.shrink_to_fit();
+            let mut params = Vec::<String>::with_capacity(5); 
+            for var in ["c", "m", "n", "B", "bdim"] {
+                params.push(String::from(var));
+            }
+            let expected = ProgramUnit::Subroutine {
+                name: String::from("scale1"),
+                params,
+                spec,
+                body
+            };
+            // now ask the parser for what it gives with everything else
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.program_unit();
+            assert_eq!(actual,expected);
+        }
+
+        #[test]
+        #[should_panic]
+        fn subroutine_without_return_panics() {
+            
+            let src = ["      SUBROUTINE f(x)",
+                       "      REAL x",
+                       "      REAL a,b,c,d",
+                       "      f = ((a*x + b)*x + c)*x + d",
+                       "      end"].join("\n");
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.program_unit();
+            assert_eq!(actual, actual);
+        }
+
+        #[test]
+        #[should_panic]
+        fn function_without_return_panics() {
+            
+            let src = ["      REAL FUNCTION f(x)",
+                       "      REAL x",
+                       "      REAL a,b,c,d",
+                       "      f = ((a*x + b)*x + c)*x + d",
+                       "      end"].join("\n");
+            let l = Lexer::new(src.chars().collect());
+            let mut parser = Parser::new(l);
+            let actual = parser.program_unit();
+            assert_eq!(actual, actual);
+        }
+        
         /* van Loan and Coleman, pg 48 */
         #[test]
         fn real_function_f() {

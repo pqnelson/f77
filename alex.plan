@@ -1,4 +1,18 @@
 <!--- -*- mode: Markdown; var: -*- -->
+# 2024-05-24T15:34:02-0700
+
+So far I am making good progress with the parser, I think I'm nearly
+done with a minimal working parser.
+
+If I can disambiguate variables into local variables and
+function/subroutine variables, then I can use a de Bruijn index-like
+scheme, and I can get an interpreter up and running. This will be useful
+for debugging purposes.
+
+The next step after that would be to write some code generation to
+produce three-address intermediate representation. If I can stick to
+SSA, then I can get deadcode elimination for free.
+
 # 2024-05-16T07:34:14-0700
 
 Lessons I am learning from writing this compiler.
