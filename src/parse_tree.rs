@@ -158,35 +158,35 @@ pub enum Expr {
 }
 
 #[derive(PartialEq, Debug)]
-pub enum Command {
+pub enum Command<E: std::cmp::PartialEq> {
     Continue,
     Goto(i32),
-    Write(Vec<Expr>),
-    Read(Vec<Expr>),
-    IfBlock {test: Expr,
-             true_branch: Vec<Statement>,
-             false_branch: Vec<Statement>},
-    ArithIf {test: Expr,
+    Write(Vec<E>),
+    Read(Vec<E>),
+    IfBlock {test: E,
+             true_branch: Vec<Statement<E>>,
+             false_branch: Vec<Statement<E>>},
+    ArithIf {test: E,
              negative: i32,
              zero: i32,
              positive: i32},
-    IfStatement {test: Expr,
-                 true_branch: Box::<Statement>},
+    IfStatement {test: E,
+                 true_branch: Box::<Statement<E>>},
     LabelDo {target_label: i32,
-             var: Expr,
-             start: Expr,
-             stop: Expr,
+             var: E,
+             start: E,
+             stop: E,
              stride: Option<Expr>,
-             body: Vec<Statement>,
-             terminal: Box<Statement>},
+             body: Vec<Statement<E>>,
+             terminal: Box<Statement<E>>},
     CallSubroutine {
-        subroutine: Expr, // identifier
-        args: Vec<Expr>
+        subroutine: E, // identifier
+        args: Vec<E>
     },
-    ExprStatement(Expr),
+    ExprStatement(E),
     Assignment {
-        lhs: Expr,
-        rhs: Expr
+        lhs: E,
+        rhs: E
     },
     Stop,
     Return,
@@ -196,23 +196,23 @@ pub enum Command {
 
 // 5 digit label with values <= (10^5) - 1 <= 0b11000011010011111 < 2^17
 #[derive(PartialEq, Debug)]
-pub struct Statement {
+pub struct Statement<E: std::cmp::PartialEq> {
     pub label: Option<i32>,
-    pub command: Command,
+    pub command: Command<E>,
 }
 
-impl Statement {
+impl<E: std::cmp::PartialEq> Statement<E> {
     pub fn is_continue(&mut self) -> bool {
-        matches!(self.command, Command::Continue)
+        matches!(self.command, Command::<E>::Continue)
     }
     pub fn is_end(&mut self) -> bool {
-        matches!(self.command, Command::End)
+        matches!(self.command, Command::<E>::End)
     }
     pub fn is_stop(&mut self) -> bool {
-        matches!(self.command, Command::Stop)
+        matches!(self.command, Command::<E>::Stop)
     }
     pub fn is_return(&mut self) -> bool {
-        matches!(self.command, Command::Return)
+        matches!(self.command, Command::<E>::Return)
     }
 }
 
@@ -327,24 +327,24 @@ impl VarDeclaration {
 }
 
 #[derive(PartialEq, Debug)]
-pub enum ProgramUnit {
+pub enum ProgramUnit<E: std::cmp::PartialEq> {
     Program {
         name: String,
         spec: Vec<Specification>,
-        body: Vec<Statement>,
+        body: Vec<Statement<E>>,
     },
     Function {
         name: String,
         return_type: Type,
         params: Vec<String>,
         spec: Vec<Specification>,
-        body: Vec<Statement>,
+        body: Vec<Statement<E>>,
     },
     Subroutine {
         name: String,
         params: Vec<String>,
         spec: Vec<Specification>,
-        body: Vec<Statement>,
+        body: Vec<Statement<E>>,
     },
     Empty,
 }
@@ -357,72 +357,73 @@ pub enum ProgramUnitKind {
     Empty,
 }
 
-impl ProgramUnit {
+impl<E: std::cmp::PartialEq> ProgramUnit<E> {
     pub fn kind(&self) -> ProgramUnitKind {
         match *self {
-            ProgramUnit::Program {..} => ProgramUnitKind::Program,
-            ProgramUnit::Function {..} => ProgramUnitKind::Function,
-            ProgramUnit::Subroutine {..} => ProgramUnitKind::Subroutine,
-            ProgramUnit::Empty => ProgramUnitKind::Empty,
+            ProgramUnit::<E>::Program {..} => ProgramUnitKind::Program,
+            ProgramUnit::<E>::Function {..} => ProgramUnitKind::Function,
+            ProgramUnit::<E>::Subroutine {..} => ProgramUnitKind::Subroutine,
+            ProgramUnit::<E>::Empty => ProgramUnitKind::Empty,
         }
     }
 
     pub fn is_empty(self) -> bool {
-        matches!(self, ProgramUnit::Empty)
+        matches!(self, ProgramUnit::<E>::Empty)
     }
 
     pub fn is_named(&self, the_name: &str) -> bool {
-        return matches!(self, ProgramUnit::Program {name: the_name, ..})
-            || matches!(self, ProgramUnit::Function {name: the_name, ..})
-            || matches!(self, ProgramUnit::Subroutine {name: the_name, ..});
+        return matches!(self, ProgramUnit::<E>::Program {name: the_name, ..})
+            || matches!(self, ProgramUnit::<E>::Function {name: the_name, ..})
+            || matches!(self, ProgramUnit::<E>::Subroutine {name: the_name, ..});
     }
 
     pub fn get_name(&self) -> String {
         match self {
-            ProgramUnit::Program {name, ..} => name.clone(),
-            ProgramUnit::Function {name, ..} => name.clone(),
-            ProgramUnit::Subroutine {name, ..} => name.clone(),
+            ProgramUnit::<E>::Program {name, ..} => name.clone(),
+            ProgramUnit::<E>::Function {name, ..} => name.clone(),
+            ProgramUnit::<E>::Subroutine {name, ..} => name.clone(),
             _ => String::from("")
         }
     }
 
-    pub fn shares_name(&self, other: &ProgramUnit) -> bool {
+    pub fn shares_name(&self, other: &ProgramUnit<E>) -> bool {
         match (self, other) {
-            (ProgramUnit::Program {name: a,..},
-             ProgramUnit::Program {name: b,..})
-                | (ProgramUnit::Program {name: a,..},
-                   ProgramUnit::Function {name: b,..})
-                | (ProgramUnit::Program {name: a,..},
-                   ProgramUnit::Subroutine {name: b,..})
-                | (ProgramUnit::Function {name: a,..},
-                   ProgramUnit::Program {name: b,..})
-                | (ProgramUnit::Function {name: a,..},
-                   ProgramUnit::Function {name: b,..})
-                | (ProgramUnit::Function {name: a,..},
-                   ProgramUnit::Subroutine {name: b,..})
-                | (ProgramUnit::Subroutine {name: a,..},
-                   ProgramUnit::Program {name: b,..})
-                | (ProgramUnit::Subroutine {name: a,..},
-                   ProgramUnit::Function {name: b,..})
-                | (ProgramUnit::Subroutine {name: a,..},
-                   ProgramUnit::Subroutine {name: b,..}) => a == b,
+            (ProgramUnit::<E>::Program {name: a,..},
+             ProgramUnit::<E>::Program {name: b,..})
+                | (ProgramUnit::<E>::Program {name: a,..},
+                   ProgramUnit::<E>::Function {name: b,..})
+                | (ProgramUnit::<E>::Program {name: a,..},
+                   ProgramUnit::<E>::Subroutine {name: b,..})
+                | (ProgramUnit::<E>::Function {name: a,..},
+                   ProgramUnit::<E>::Program {name: b,..})
+                | (ProgramUnit::<E>::Function {name: a,..},
+                   ProgramUnit::<E>::Function {name: b,..})
+                | (ProgramUnit::<E>::Function {name: a,..},
+                   ProgramUnit::<E>::Subroutine {name: b,..})
+                | (ProgramUnit::<E>::Subroutine {name: a,..},
+                   ProgramUnit::<E>::Program {name: b,..})
+                | (ProgramUnit::<E>::Subroutine {name: a,..},
+                   ProgramUnit::<E>::Function {name: b,..})
+                | (ProgramUnit::<E>::Subroutine {name: a,..},
+                   ProgramUnit::<E>::Subroutine {name: b,..}) => a == b,
             _ => false,
         }
     }
 }
 
-pub struct Program {
-    pub program: ProgramUnit,
-    pub functions: Vec<ProgramUnit>,
-    pub subroutines: Vec<ProgramUnit>,
+#[derive(PartialEq, Debug)]
+pub struct Program<E: std::cmp::PartialEq> {
+    pub program: ProgramUnit<E>,
+    pub functions: Vec<ProgramUnit<E>>,
+    pub subroutines: Vec<ProgramUnit<E>>,
 }
 
-impl Program {
+impl<E: std::cmp::PartialEq> Program<E> {
     pub fn new() -> Self {
         Self {
-            program: ProgramUnit::Empty,
-            functions: Vec::<ProgramUnit>::with_capacity(8),
-            subroutines: Vec::<ProgramUnit>::with_capacity(8),
+            program: ProgramUnit::<E>::Empty,
+            functions: Vec::<ProgramUnit<E>>::with_capacity(8),
+            subroutines: Vec::<ProgramUnit<E>>::with_capacity(8),
         }
     }
 
@@ -437,7 +438,7 @@ impl Program {
     want to get this done quickly. We can profile the code and see if
     hashmaps are better (they usually aren't in Rust).
      */
-    pub fn has_unit_sharing_name(&self, unit: &ProgramUnit) -> bool {
+    pub fn has_unit_sharing_name(&self, unit: &ProgramUnit<E>) -> bool {
         if self.program.shares_name(unit) {
             return true;
         }
@@ -475,7 +476,7 @@ impl Program {
 
     /**
     Adds a new program unit to the representation of the
-    program. If the new program unit is `ProgramUnit::Empty`, then
+    program. If the new program unit is `ProgramUnit<E>::Empty`, then
     nothing is done.
 
     Mutates the `Program` structure.
@@ -484,14 +485,14 @@ impl Program {
     
     1. Panics if there are two program units with the same name.
 
-    2. Panics if you try to add a `ProgramUnit::Program` when one has
+    2. Panics if you try to add a `ProgramUnit<E>::Program` when one has
     already been pushed.
 
     # Returns
     
     Returns nothing.
      */
-    pub fn push(&mut self, unit: ProgramUnit) {
+    pub fn push(&mut self, unit: ProgramUnit<E>) {
         if self.has_unit_sharing_name(&unit) {
             // panic if there are two units sharing the same name
             panic!("Two program units share name '{}'",
@@ -500,7 +501,7 @@ impl Program {
         // let kind = unit.kind();
         match unit.kind() {
             ProgramUnitKind::Program => {
-                if ProgramUnit::Empty != self.program {
+                if ProgramUnit::<E>::Empty != self.program {
                     // panic
                     panic!("Trying to have two main programs");
                 } else {

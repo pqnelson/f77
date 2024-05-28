@@ -209,8 +209,8 @@ impl Parser {
 
     Panics if two program units share the same name.
     */
-    pub fn parse_all(&mut self) -> Program {
-        let mut nodes = Program::new();
+    pub fn parse_all(&mut self) -> Program<Expr> {
+        let mut nodes = Program::<Expr>::new();
         while !self.is_finished() {
             nodes.push(self.program_unit());
         }
@@ -220,7 +220,7 @@ impl Parser {
     /* *****************************************************************
     Program Unit
      ********************************************************** */
-    fn program_unit(&mut self) -> ProgramUnit {
+    fn program_unit(&mut self) -> ProgramUnit<Expr> {
         if let Some(token) = self.peek() {
             match token.token_type {
                 TokenType::Program => return self.program(),
@@ -230,7 +230,7 @@ impl Parser {
                 _ => panic!("Expected a program unit, found {token}"),
             }
         }
-        return ProgramUnit::Empty;
+        return ProgramUnit::<Expr>::Empty;
     }
 
     /*
@@ -777,7 +777,7 @@ Requires: indices is not empty
     Also, allow support for F90-style declarations where the return type
     is among the variable specification.
      */
-    fn function(&mut self) -> ProgramUnit {
+    fn function(&mut self) -> ProgramUnit<Expr> {
         let line = self.line;
         let return_type;
         let mut type_prefix: Option<Type> = None;
@@ -811,11 +811,11 @@ Requires: indices is not empty
         } else /* if F90-style function declaration */ {
             return_type = self.determine_type_from_spec(&name, &spec);
         }
-        let mut body = Vec::<Statement>::with_capacity(32);
+        let mut body = Vec::<Statement<Expr>>::with_capacity(32);
         let mut has_return = false;
         while !self.is_finished() {
             let mut stmt = self.statement();
-            println!("Statement = {:?}", stmt);
+            println!("Statement<Expr> = {:?}", stmt);
             has_return = has_return || stmt.is_return();
             let is_done = stmt.is_end();
             body.push(stmt);
@@ -840,7 +840,7 @@ Requires: indices is not empty
                  "end"
     ```
      */
-    fn subroutine(&mut self) -> ProgramUnit {
+    fn subroutine(&mut self) -> ProgramUnit<Expr> {
         let line = self.line;
         self.consume(TokenType::Subroutine, "");
         // get the name of the function
@@ -853,7 +853,7 @@ Requires: indices is not empty
         let params = self.dummy_args();
         // start parsing the body of the subroutine
         let spec = self.specification();
-        let mut body = Vec::<Statement>::with_capacity(32);
+        let mut body = Vec::<Statement<Expr>>::with_capacity(32);
         let mut has_return = false;
         while !self.is_finished() {
             let mut stmt = self.statement();
@@ -868,7 +868,7 @@ Requires: indices is not empty
             panic!("LINE {} subroutine has no return statement",
                    line);
         }
-        return ProgramUnit::Subroutine { name, params, spec, body };
+        return ProgramUnit::<Expr>::Subroutine { name, params, spec, body };
     }
 
     /*
@@ -876,7 +876,7 @@ Requires: indices is not empty
     program = "program" name [specification] {statement} "end";
     ```
      */
-    fn program(&mut self) -> ProgramUnit {
+    fn program(&mut self) -> ProgramUnit<Expr> {
         self.consume(TokenType::Program, "");
         let token = self.advance();
         let name = match token.token_type {
@@ -884,7 +884,7 @@ Requires: indices is not empty
             other => panic!("Program expected name, found {other}"),
         };
         let spec = self.specification();
-        let mut body = Vec::<Statement>::with_capacity(32);
+        let mut body = Vec::<Statement<Expr>>::with_capacity(32);
         while !self.is_finished() {
             let mut stmt = self.statement();
             if stmt.is_stop() {
@@ -902,11 +902,11 @@ Requires: indices is not empty
                 body.push(stmt);
             }
         }
-        return ProgramUnit::Program { name, spec, body };
+        return ProgramUnit::<Expr>::Program { name, spec, body };
     }
     
     /* *****************************************************************
-    Statements
+    Statement<Expr>s
      ********************************************************** */
 
     fn io_list(&mut self) -> Vec<Expr> {
@@ -923,7 +923,7 @@ Requires: indices is not empty
     /*
     read-statement = "read (*,*)" io-list
     */
-    fn read(&mut self, label: Option<i32>) -> Statement {
+    fn read(&mut self, label: Option<i32>) -> Statement<Expr> {
         assert!(TokenType::Read == self.advance().token_type);
         
         self.consume(TokenType::LeftParen,
@@ -936,7 +936,7 @@ Requires: indices is not empty
                      "Expected dummy arg in READ statement's UNIT");
         self.consume(TokenType::RightParen,
                      "Expected right paren in READ statement's UNIT");
-        Statement {
+        Statement::<Expr> {
             label,
             command: Command::Read(self.io_list()),
         }
@@ -945,7 +945,7 @@ Requires: indices is not empty
     /*
     write-statement = "write (*,*)" io-list
     */
-    fn write(&mut self, label: Option<i32>) -> Statement {
+    fn write(&mut self, label: Option<i32>) -> Statement<Expr> {
         assert!(TokenType::Write == self.advance().token_type);
         
         self.consume(TokenType::LeftParen,
@@ -958,7 +958,7 @@ Requires: indices is not empty
                      "Expected dummy arg in WRITE statement's UNIT");
         self.consume(TokenType::RightParen,
                      "Expected right paren in WRITE statement's UNIT");
-        Statement {
+        Statement::<Expr> {
             label,
             command: Command::Write(self.io_list()),
         }
@@ -973,7 +973,7 @@ Requires: indices is not empty
     goto-statement = "GOTO" label
     ```
      */
-    fn goto_statement(&mut self, label: Option<i32>) -> Statement {
+    fn goto_statement(&mut self, label: Option<i32>) -> Statement<Expr> {
         assert!(TokenType::Goto == self.advance().token_type);
         let target: i32;
         let t = self.advance();
@@ -987,7 +987,7 @@ Requires: indices is not empty
                        other);
             },
         }
-        Statement {
+        Statement::<Expr> {
             label,
             command: Command::Goto(target),
         }
@@ -999,10 +999,10 @@ Requires: indices is not empty
     continue-statement = "continue"
     ```
      */
-    fn continue_statement(&mut self, label: Option<i32>) -> Statement {
+    fn continue_statement(&mut self, label: Option<i32>) -> Statement<Expr> {
         self.consume(TokenType::Continue,
                      "Continue statement expected to, well, 'continue'");
-        Statement {
+        Statement::<Expr> {
             label,
             command: Command::Continue,
         }
@@ -1012,7 +1012,7 @@ Requires: indices is not empty
     If statements are one of the two control statements in Fortran 77,
     and comes in three delicious flavours.
     
-    # Arithmetic If Statement
+    # Arithmetic If Statement<Expr>
     
     There are arithmetic `if` statements in Fortran 77 (11.4), which
     looks like:
@@ -1027,7 +1027,7 @@ Requires: indices is not empty
     - else if s = 0 then goto l2,
     - else if s > 0 then goto l3.
 
-    # Logical If Statements
+    # Logical If Statement<Expr>s
 
     A logical if statement (11.5) in Fortran 77 looks like:
     
@@ -1054,7 +1054,7 @@ Requires: indices is not empty
     end if
     ```
 
-    # Block-If Statements
+    # Block-If Statement<Expr>s
     This is discussed in the Fortran 77 Standard (11.6 et seq).
     
     The Fortran 90 Standard succinctly gives us the grammar for
@@ -1077,12 +1077,12 @@ Requires: indices is not empty
     (* R806 *)
     end-if-statement = "end" "if";
     ```
-    We can represent this using a `Statement::IfElse`.
+    We can represent this using a `Statement<Expr>::IfElse`.
 
     See Kernighan and Plauger's _The Elements of Programming Style_
     for more about avoiding arithmetic if statements.
      */
-    fn if_construct(&mut self, label: Option<i32>) -> Statement {
+    fn if_construct(&mut self, label: Option<i32>) -> Statement<Expr> {
         assert!(TokenType::If == self.advance().token_type);
         self.consume(TokenType::LeftParen,
                      "Expected '(' to start if statement.");
@@ -1108,12 +1108,12 @@ Requires: indices is not empty
         // self.illegal_statement(label)
     }
 
-    fn end_if(&mut self, label: Option<i32>, test: Expr, true_branch: Vec<Statement>, false_branch: Vec<Statement>) -> Statement {
+    fn end_if(&mut self, label: Option<i32>, test: Expr, true_branch: Vec<Statement<Expr>>, false_branch: Vec<Statement<Expr>>) -> Statement<Expr> {
         if self.check(TokenType::End) {
             self.advance();
             self.consume(TokenType::If,
                          "If statement terminated by 'end', expected 'end if'");
-            Statement {
+            Statement::<Expr> {
                 label,
                 command: Command::IfBlock {
                     test,
@@ -1122,7 +1122,7 @@ Requires: indices is not empty
                 },
             }
         } else if self.check(TokenType::EndIf) {
-            return Statement {
+            return Statement::<Expr> {
                 label,
                 command: Command::IfBlock {
                     test,
@@ -1135,9 +1135,9 @@ Requires: indices is not empty
         }
     }
 
-    fn block_if(&mut self, label: Option<i32>, test: Expr) -> Statement {
+    fn block_if(&mut self, label: Option<i32>, test: Expr) -> Statement<Expr> {
         assert!(TokenType::Then == self.advance().token_type);
-        let mut true_branch = Vec::<Statement>::with_capacity(32);
+        let mut true_branch = Vec::<Statement<Expr>>::with_capacity(32);
         loop {
             true_branch.push(self.statement());
             if self.matches(&[TokenType::Else, TokenType::End,
@@ -1150,8 +1150,8 @@ Requires: indices is not empty
             self.consume(TokenType::Else, "");
             if self.check(TokenType::If) {
                 // else if ...
-                let else_if: Statement = self.if_construct(None);
-                Statement {
+                let else_if: Statement<Expr> = self.if_construct(None);
+                Statement::<Expr> {
                     label,
                     command: Command::IfBlock {
                         test,
@@ -1160,7 +1160,7 @@ Requires: indices is not empty
                     },
                 }
             } else {
-                let mut false_branch = Vec::<Statement>::with_capacity(32);
+                let mut false_branch = Vec::<Statement<Expr>>::with_capacity(32);
                 loop {
                     false_branch.push(self.statement());
                     if self.matches(&[TokenType::End, TokenType::EndIf]) {
@@ -1171,7 +1171,7 @@ Requires: indices is not empty
                 self.end_if(label, test, true_branch, false_branch)
             }
         } else {
-            self.end_if(label, test, true_branch, Vec::<Statement>::new())
+            self.end_if(label, test, true_branch, Vec::<Statement<Expr>>::new())
         }
     }
 
@@ -1183,7 +1183,7 @@ Requires: indices is not empty
     arithmetic_if = [label] "if (" test ")" label "," label "," label;
     ```
      */
-    fn arithmetic_if(&mut self, label: Option<i32>, test: Expr) -> Statement {
+    fn arithmetic_if(&mut self, label: Option<i32>, test: Expr) -> Statement<Expr> {
         fn get_label(this: &mut Parser, case_name: &str) -> i32 {
             let token = this.advance();
             match token.token_type {
@@ -1199,7 +1199,7 @@ Requires: indices is not empty
         self.consume(TokenType::Comma,
                      "Arithmetic-if expects comma separating labels");
         let positive = get_label(self, "negative");
-        Statement {
+        Statement::<Expr> {
             label,
             command: Command::ArithIf {
                 test,
@@ -1214,8 +1214,8 @@ Requires: indices is not empty
     ```ebnf
     if_statement = "if (" logical-scalar-expr ")" statement;
     */
-    fn if_statement(&mut self, label: Option<i32>, test: Expr) -> Statement {
-        Statement {
+    fn if_statement(&mut self, label: Option<i32>, test: Expr) -> Statement<Expr> {
+        Statement::<Expr> {
             label,
             command: Command::IfStatement {test,
                                            true_branch: Box::new(self.statement())},
@@ -1241,7 +1241,7 @@ Requires: indices is not empty
     end_do = "end do" | label continue;
     ```
      */
-    fn block_do_construct(&mut self, label: Option<i32>) -> Statement {
+    fn block_do_construct(&mut self, label: Option<i32>) -> Statement<Expr> {
         self.consume(TokenType::Do, "");
         let line = self.line;
         if let Some(token) = self.peek() {
@@ -1295,13 +1295,13 @@ Requires: indices is not empty
         (var, start, stop, stride)
     }
 
-    fn label_do_statement(&mut self, label: Option<i32>, target: i32) -> Statement {
+    fn label_do_statement(&mut self, label: Option<i32>, target: i32) -> Statement<Expr> {
         let line = self.line;
         // parse the loop_control
         let (var, start, stop, stride) = self.loop_control();
         // parse the do_block
         let mut target_statement;
-        let mut do_block = Vec::<Statement>::with_capacity(32);
+        let mut do_block = Vec::<Statement<Expr>>::with_capacity(32);
         loop {
             let statement = self.statement();
             if Some(target) == statement.label {
@@ -1320,7 +1320,7 @@ Requires: indices is not empty
             }
         }
         do_block.shrink_to_fit();
-        Statement {
+        Statement::<Expr> {
             label,
             command: Command::LabelDo {
                 target_label: target,
@@ -1336,7 +1336,7 @@ Requires: indices is not empty
 
     /*
      */
-    fn nonlabel_do_statement(&mut self, label: Option<i32>) -> Statement {
+    fn nonlabel_do_statement(&mut self, label: Option<i32>) -> Statement<Expr> {
         let line = self.line;
         if !self.support_f90 {
             eprintln!("WARNING: trying to parse do-loop on line {} using Fortran 90 syntax",
@@ -1358,7 +1358,7 @@ Requires: indices is not empty
         // parse the loop_control
         let (var, start, stop, stride) = self.loop_control();
         // parse the do_block
-        let mut do_block = Vec::<Statement>::with_capacity(32);
+        let mut do_block = Vec::<Statement<Expr>>::with_capacity(32);
         while !self.is_finished() {
             if found_end(self, line) {
                 break;
@@ -1366,14 +1366,14 @@ Requires: indices is not empty
             do_block.push(self.statement());
         }
         // hack
-        let terminal_statement = Statement {
+        let terminal_statement = Statement::<Expr> {
             label: None,
             command: Command::Continue,
         };
 
         do_block.shrink_to_fit();
 
-        Statement {
+        Statement::<Expr> {
             label,
             command: Command::LabelDo {
                 target_label: -1,
@@ -1387,7 +1387,7 @@ Requires: indices is not empty
         }
     }
 
-    fn call_subroutine(&mut self, label: Option<i32>) -> Statement {
+    fn call_subroutine(&mut self, label: Option<i32>) -> Statement<Expr> {
         self.consume(TokenType::Call, "subroutine call expected 'CALL'");
         let line = self.line;
         
@@ -1417,7 +1417,7 @@ Requires: indices is not empty
             args.push(self.expr());
         }
         args.shrink_to_fit();
-        Statement {
+        Statement::<Expr> {
             label,
             command: Command::CallSubroutine {
                 subroutine,
@@ -1426,12 +1426,12 @@ Requires: indices is not empty
         }
     }
 
-    fn assignment_or_expr(&mut self, label: Option<i32>) -> Statement {
+    fn assignment_or_expr(&mut self, label: Option<i32>) -> Statement<Expr> {
         let e = self.expr();
         if self.check(TokenType::Equal) {
             self.consume(TokenType::Equal, "");
             let rhs = self.expr();
-            Statement {
+            Statement::<Expr> {
                 label,
                 command: Command::Assignment {
                     lhs: e,
@@ -1439,7 +1439,7 @@ Requires: indices is not empty
                 }
             }
         } else {
-            Statement {
+            Statement::<Expr> {
                 label,
                 command: Command::ExprStatement(e),
             }
@@ -1478,8 +1478,8 @@ Requires: indices is not empty
         }
     }
 
-    fn illegal_statement(&mut self, label: Option<i32>) -> Statement {
-        Statement {
+    fn illegal_statement(&mut self, label: Option<i32>) -> Statement<Expr> {
+        Statement::<Expr> {
             label,
             command: Command::Illegal,
         }
@@ -1506,7 +1506,7 @@ Requires: indices is not empty
               | do-statement
               | if-statement;
      */
-    pub fn statement(&mut self) -> Statement {
+    pub fn statement(&mut self) -> Statement<Expr> {
         self.reset_continuation_count();
         let label: Option<i32> = self.statement_label();
         // assert!(!self.peek().token_type.is_label());
@@ -1521,18 +1521,18 @@ Requires: indices is not empty
                 TokenType::Call => self.call_subroutine(label),
                 TokenType::Stop => {
                     self.advance();
-                    Statement { label: label,
-                                command: Command::Stop }
+                    Statement::<Expr> { label: label,
+                                        command: Command::Stop }
                 },
                 TokenType::Return => {
                     self.advance();
-                    Statement { label: label,
-                                command: Command::Return }
+                    Statement::<Expr> { label: label,
+                                        command: Command::Return }
                 },
                 TokenType::End => {
                     self.advance();
-                    Statement { label: label,
-                                command: Command::End }
+                    Statement::<Expr> { label: label,
+                                        command: Command::End }
                 },
                 _ => {
                     self.assignment_or_expr(label)
@@ -2057,19 +2057,19 @@ mod tests {
                     }
                 ));
             }
-            let mut body = Vec::<Statement>::with_capacity(3);
-            body.push(Statement {
+            let mut body = Vec::<Statement::<Expr>>::with_capacity(3);
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::Assignment {
                     lhs: Expr::Variable(String::from("f")),
                     rhs
                 }
             });
-            body.push(Statement {
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::Return
             });
-            body.push(Statement {
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::End
             });
@@ -2115,12 +2115,12 @@ mod tests {
                     array: ArraySpec::Scalar,
                 }
             ));
-            let mut body = Vec::<Statement>::with_capacity(32);
-            body.push(Statement {
+            let mut body = Vec::<Statement<Expr>>::with_capacity(32);
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::Stop,
             });
-            body.push(Statement {
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::End,
             });
@@ -2174,8 +2174,8 @@ mod tests {
                     array: ArraySpec::Scalar,
                 }
             ));
-            let mut body = Vec::<Statement>::with_capacity(32);
-            body.push(Statement {
+            let mut body = Vec::<Statement<Expr>>::with_capacity(32);
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::Assignment {
                     lhs: Expr::Variable(String::from("m")),
@@ -2183,10 +2183,10 @@ mod tests {
                                      Box::new(Expr::Float64(3.0)))
                 }
             });
-            let mut do_body = Vec::<Statement>::with_capacity(2);
+            let mut do_body = Vec::<Statement<Expr>>::with_capacity(2);
             let mut args = Vec::<Expr>::with_capacity(1);
             args.push(Expr::Variable(String::from("k")));
-            do_body.push(Statement {
+            do_body.push(Statement::<Expr> {
                 label: None,
                 command: Command::Assignment {
                     lhs: Expr::Variable(String::from("x")),
@@ -2214,7 +2214,7 @@ mod tests {
                 Box::new(Expr::Variable(String::from("x"))))),
                                    BinOp::Minus,
                                    Box::new(Expr::Float64(3.0))));
-            do_body.push(Statement {
+            do_body.push(Statement::<Expr> {
                 label: None,
                 command: Command::Assignment {
                     lhs: Expr::Variable(String::from("m")),
@@ -2222,11 +2222,11 @@ mod tests {
                                             args)
                 }
             });
-            let terminal = Statement {
+            let terminal = Statement::<Expr> {
                 label: Some(10),
                 command: Command::Continue,
             };
-            body.push(Statement {
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::LabelDo {
                     target_label: 10,
@@ -2240,15 +2240,15 @@ mod tests {
             });
             let mut args = Vec::<Expr>::with_capacity(1);
             args.push(Expr::Variable(String::from("m")));
-            body.push(Statement {
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::Write(args),
             });
-            body.push(Statement {
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::Stop,
             });
-            body.push(Statement {
+            body.push(Statement::<Expr> {
                 label: None,
                 command: Command::End,
             });
@@ -2824,7 +2824,7 @@ mod tests {
 
         #[test]
         fn should_parse_end_statement() {
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::End
             };
@@ -2836,7 +2836,7 @@ mod tests {
         fn assign_constant_to_var() {
             let lhs = Expr::Variable(String::from("X"));
             let rhs = Expr::Int64(51);
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::Assignment {
                     lhs,
@@ -2854,7 +2854,7 @@ mod tests {
             args.push(Expr::Binary(Box::new(Expr::Variable(String::from("X"))),
                                    BinOp::Plus,
                                    Box::new(Expr::Variable(String::from("Y")))));
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::CallSubroutine{
                     subroutine: Expr::Variable(String::from("mySubroutine")),
@@ -2869,7 +2869,7 @@ mod tests {
         fn call_subroutine_with_one_args() {
             let mut args = Vec::<Expr>::with_capacity(1);
             args.push(Expr::Variable(String::from("X")));
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::CallSubroutine{
                     subroutine: Expr::Variable(String::from("mySubroutine")),
@@ -2883,7 +2883,7 @@ mod tests {
         #[test]
         fn call_subroutine_without_args() {
             let args = Vec::<Expr>::new();
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::CallSubroutine{
                     subroutine: Expr::Variable(String::from("mySubroutine")),
@@ -2899,16 +2899,16 @@ mod tests {
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("X")));
             args.shrink_to_fit();
-            let mut do_body = vec!(Statement {
+            let mut do_body = vec!(Statement::<Expr> {
                 label: None,
                 command: Command::Write(args),
             });
             do_body.shrink_to_fit();
-            let terminal = Statement {
+            let terminal = Statement::<Expr> {
                 label: Some(100),
                 command: Command::Continue,
             };
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::LabelDo {
                     target_label: 100,
@@ -2932,16 +2932,16 @@ mod tests {
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("X")));
             args.shrink_to_fit();
-            let mut do_body = vec!(Statement {
+            let mut do_body = vec!(Statement::<Expr> {
                 label: None,
                 command: Command::Write(args),
             });
             do_body.shrink_to_fit();
-            let terminal = Statement {
+            let terminal = Statement::<Expr> {
                 label: Some(100),
                 command: Command::Continue,
             };
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::LabelDo {
                     target_label: 100,
@@ -2965,16 +2965,16 @@ mod tests {
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("X")));
             args.shrink_to_fit();
-            let mut do_body = vec!(Statement {
+            let mut do_body = vec!(Statement::<Expr> {
                 label: None,
                 command: Command::Write(args),
             });
             do_body.shrink_to_fit();
-            let terminal = Statement {
+            let terminal = Statement::<Expr> {
                 label: Some(100),
                 command: Command::Continue,
             };
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::LabelDo {
                     target_label: 100,
@@ -2999,16 +2999,16 @@ mod tests {
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("X")));
             args.shrink_to_fit();
-            let mut do_body = vec!(Statement {
+            let mut do_body = vec!(Statement::<Expr> {
                 label: None,
                 command: Command::Write(args),
             });
             do_body.shrink_to_fit();
-            let terminal = Statement {
+            let terminal = Statement::<Expr> {
                 label: None,
                 command: Command::Continue,
             };
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::LabelDo {
                     target_label: -1,
@@ -3035,17 +3035,17 @@ mod tests {
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("X")));
             args.shrink_to_fit();
-            let mut true_branch = vec!(Statement {
+            let mut true_branch = vec!(Statement::<Expr> {
                 label: None,
                 command: Command::Write(args),
             });
             true_branch.shrink_to_fit();
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(10_i32),
                 command: Command::IfBlock {
                     test,
                     true_branch,
-                    false_branch: Vec::<Statement>::new(),
+                    false_branch: Vec::<Statement::<Expr>>::new(),
                 },
             };
             should_parse_stmt!(["  10  IF (X.EQ.Y) THEN",
@@ -3063,7 +3063,7 @@ mod tests {
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("X")));
             args.shrink_to_fit();
-            let mut true_branch = vec!(Statement {
+            let mut true_branch = vec!(Statement::<Expr> {
                 label: None,
                 command: Command::Write(args),
             });
@@ -3072,13 +3072,13 @@ mod tests {
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("Y")));
             args.shrink_to_fit();
-            let mut false_branch = vec!(Statement {
+            let mut false_branch = vec!(Statement::<Expr> {
                 label: None,
                 command: Command::Write(args),
             });
             false_branch.shrink_to_fit();
             
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(10_i32),
                 command: Command::IfBlock {
                     test,
@@ -3103,9 +3103,9 @@ mod tests {
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("X")));
             args.shrink_to_fit();
-            let mut true_branch = vec!(Statement {
+            let mut true_branch = vec!(Statement::<Expr> {
                 label: None,
-                command: Command::Write(args),
+                command: Command::<Expr>::Write(args),
             });
             true_branch.shrink_to_fit();
             // else if branch
@@ -3113,26 +3113,26 @@ mod tests {
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("Y")));
             args.shrink_to_fit();
-            let mut else_if_true_branch = vec!(Statement {
+            let mut else_if_true_branch = vec!(Statement::<Expr> {
                 label: None,
-                command: Command::Write(args),
+                command: Command::<Expr>::Write(args),
             });
             else_if_true_branch.shrink_to_fit();
             // else if false subbranch
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("Z")));
             args.shrink_to_fit();
-            let mut else_if_false_branch = vec!(Statement {
+            let mut else_if_false_branch = vec!(Statement::<Expr> {
                 label: None,
-                command: Command::Write(args),
+                command: Command::<Expr>::Write(args),
             });
             else_if_false_branch.shrink_to_fit();
             let else_test = Expr::Binary(Box::new(Expr::Variable(String::from("Y"))),
                                     BinOp::Gt,
                                     Box::new(Expr::Variable(String::from("Z"))));
-            let mut else_if_branch = vec!(Statement {
+            let mut else_if_branch = vec!(Statement::<Expr> {
                 label: None,
-                command: Command::IfBlock {
+                command: Command::<Expr>::IfBlock {
                     test: else_test,
                     true_branch: else_if_true_branch,
                     false_branch: else_if_false_branch
@@ -3140,7 +3140,7 @@ mod tests {
             });
             else_if_branch.shrink_to_fit();
             
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(10_i32),
                 command: Command::IfBlock {
                     test,
@@ -3164,11 +3164,11 @@ mod tests {
             let test = Expr::Binary(Box::new(Expr::Variable(String::from("X"))),
                                     BinOp::Eq,
                                     Box::new(Expr::Variable(String::from("Y"))));
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(10_i32),
                 command: Command::IfStatement {
                     test,
-                    true_branch: Box::new(Statement{
+                    true_branch: Box::new(Statement::<Expr>{
                         label: None,
                         command: Command::Goto(300),
                     }),
@@ -3181,7 +3181,7 @@ mod tests {
         #[test]
         fn labeled_arith_if_example() {
             let test = Expr::Variable(String::from("X"));
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(10_i32),
                 command: Command::ArithIf {
                     test,
@@ -3199,7 +3199,7 @@ mod tests {
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("X")));
             args.shrink_to_fit();
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(10_i32),
                 command: Command::Write(args),
             };
@@ -3214,7 +3214,7 @@ mod tests {
             args.push(Expr::Variable(String::from("Y")));
             args.push(Expr::Variable(String::from("Z")));
             args.shrink_to_fit();
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(10_i32),
                 command: Command::Write(args),
             };
@@ -3227,7 +3227,7 @@ mod tests {
             let mut args = Vec::<Expr>::new();
             args.push(Expr::Variable(String::from("X")));
             args.shrink_to_fit();
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(10_i32),
                 command: Command::Read(args),
             };
@@ -3242,7 +3242,7 @@ mod tests {
             args.push(Expr::Variable(String::from("Y")));
             args.push(Expr::Variable(String::from("Z")));
             args.shrink_to_fit();
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(10_i32),
                 command: Command::Read(args),
             };
@@ -3252,7 +3252,7 @@ mod tests {
 
         #[test]
         fn zero_label_continue_is_unlabeled() {
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::Continue
             };
@@ -3262,7 +3262,7 @@ mod tests {
 
         #[test]
         fn labeled_continue_with_leading_zeros() {
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(10_i32),
                 command: Command::Continue
             };
@@ -3272,7 +3272,7 @@ mod tests {
 
         #[test]
         fn labeled_continue() {
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(10_i32),
                 command: Command::Continue
             };
@@ -3282,7 +3282,7 @@ mod tests {
 
         #[test]
         fn unlabeled_continue() {
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::Continue
             };
@@ -3292,7 +3292,7 @@ mod tests {
 
         #[test]
         fn labeled_goto() {
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: Some(100_i32),
                 command: Command::Goto(325)
             };
@@ -3302,7 +3302,7 @@ mod tests {
 
         #[test]
         fn unlabeled_goto() {
-            let expected = Statement {
+            let expected = Statement::<Expr> {
                 label: None,
                 command: Command::Goto(321)
             };
