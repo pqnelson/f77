@@ -1,4 +1,29 @@
 <!--- -*- mode: Markdown; var: -*- -->
+# 2024-05-29T08:41:15-0700
+
+I have refactored the structure of the abstract syntax tree to make an
+expression a generic parameter. This is because the initial parse tree
+cannot disambiguate a function call from an array element. (It sounds
+silly, I know, but they use identical syntax in Fortran.) I've also
+parametrized the specification statements by the kind of expression, for
+future disambiguation.
+
+Now, there is `parse_tree::Expr` and I hope to write an `ast::Expr`
+which will use "de Bruijn indices" for the variables, function
+identifiers, and subroutine identifiers.
+
+Why do this? Well, this would allow me to clone a
+`ProgramUnit::Function`, evaluate it using a tree walking interpreter,
+then obtain a value (result). So I would get an interpreter for free.
+
+The next step, before jumping to an interpreter, will be to type check
+the expressions. This should be straightforward, since FORTRAN is
+simpler than simply-typed lambda calculus.
+
+We can add some minor optimization schemes here (like constant
+propagation --- e.g., replacing `3*7` with `21`), but we should really
+jump to three-address code and SSA.
+
 # 2024-05-24T15:34:02-0700
 
 So far I am making good progress with the parser, I think I'm nearly

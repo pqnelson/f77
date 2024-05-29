@@ -268,15 +268,15 @@ assumed_shape = [lower_bound] ":";
 assumed_size_spec = [explicit_shape_spec_list ","] [lower_bound ":"] "*";
  */
 #[derive(PartialEq, Debug)]
-pub enum ArraySpec {
-    ExplicitShape(Vec<(Option<Expr>, Expr)>),
-    AssumedShape(Vec<Option<Expr>>),
+pub enum ArraySpec<E: std::cmp::PartialEq> {
+    ExplicitShape(Vec<(Option<E>, E)>),
+    AssumedShape(Vec<Option<E>>),
     // assumed_size_spec stored as AssumedSize(ExplicitShape, Some(lower_bound))
-    AssumedSize(Vec<(Option<Expr>, Expr)>, Option<Expr>),
+    AssumedSize(Vec<(Option<E>, E)>, Option<E>),
     Scalar,
 }
 
-impl ArraySpec {
+impl<E: std::cmp::PartialEq> ArraySpec<E> {
     pub fn rank(self) -> usize {
         match self {
             ArraySpec::ExplicitShape(v) => v.len(),
@@ -305,22 +305,22 @@ unsupported_specification_statement =
           | save;
  */
 #[derive(PartialEq, Debug)]
-pub struct VarDeclaration {
+pub struct VarDeclaration<E: std::cmp::PartialEq> {
     pub kind: Type,
     pub name: String,
-    pub array: ArraySpec,
+    pub array: ArraySpec<E>,
     /*
     rank: u8, // F77 says this must be less than 7
     dims: Vec<(ArrayIndex,ArrayIndex)>,
      */
 }
 #[derive(PartialEq, Debug)]
-pub enum Specification {
-    TypeDeclaration (VarDeclaration),
-    Param (String, Expr),
+pub enum Specification<E: std::cmp::PartialEq> {
+    TypeDeclaration (VarDeclaration<E>),
+    Param (String, E),
 }
 
-impl VarDeclaration {
+impl<E: std::cmp::PartialEq> VarDeclaration<E> {
     pub fn rank(self) -> usize {
         self.array.rank()
     }
@@ -330,20 +330,20 @@ impl VarDeclaration {
 pub enum ProgramUnit<E: std::cmp::PartialEq> {
     Program {
         name: String,
-        spec: Vec<Specification>,
+        spec: Vec<Specification<E>>,
         body: Vec<Statement<E>>,
     },
     Function {
         name: String,
         return_type: Type,
         params: Vec<String>,
-        spec: Vec<Specification>,
+        spec: Vec<Specification<E>>,
         body: Vec<Statement<E>>,
     },
     Subroutine {
         name: String,
         params: Vec<String>,
-        spec: Vec<Specification>,
+        spec: Vec<Specification<E>>,
         body: Vec<Statement<E>>,
     },
     Empty,
@@ -460,15 +460,22 @@ impl<E: std::cmp::PartialEq> Program<E> {
     the name (if there's a matching function or subroutine). When
     there's no match, `None` is returned.
      */
-    pub fn index_for(self, name: String) -> Option<Expr> {
+    pub fn index_for(self, name: String) -> Option<(usize,ProgramUnitKind)> {
         for (idx, f) in self.functions.iter().enumerate() {
             if f.is_named(&name) {
-                return Some(Expr::FunctionIndex(idx));
+                return Some((idx, ProgramUnitKind::Function));
             }
         }
+        if let Some(idx) = self.subroutine_index(&name) {
+            return Some((idx, ProgramUnitKind::Subroutine));
+        }
+        return None;
+    }
+
+    pub fn subroutine_index(self, name: &str) -> Option<usize> {
         for (idx, sub) in self.subroutines.iter().enumerate() {
-            if sub.is_named(&name) {
-                return Some(Expr::SubroutineIndex(idx));
+            if sub.is_named(name) {
+                return Some(idx);
             }
         }
         return None;

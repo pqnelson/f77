@@ -267,8 +267,8 @@ impl Parser {
         | "(*)";
     ```
      */
-    fn specification(&mut self) -> Vec<Specification> {
-        let mut result = Vec::<Specification>::with_capacity(16);
+    fn specification(&mut self) -> Vec<Specification<Expr>> {
+        let mut result = Vec::<Specification<Expr>>::with_capacity(16);
         while !self.is_finished() {
             if let Some(token) = self.peek() {
                 match token.token_type {
@@ -474,11 +474,11 @@ impl Parser {
         return result;
     }
     
-    fn type_declarations(&mut self) -> Vec<VarDeclaration> {
+    fn type_declarations(&mut self) -> Vec<VarDeclaration<Expr>> {
         // assert (current token is a basic type)
         // determine the type
         let kind: Type = self.determine_type();
-        let mut results = Vec::<VarDeclaration>::with_capacity(8);
+        let mut results = Vec::<VarDeclaration<Expr>>::with_capacity(8);
         while !self.is_finished() {
             let name;
             let id = self.advance();
@@ -530,7 +530,7 @@ impl Parser {
     ASSUMES: the leading left parentheses has NOT been processed
      */
     // TODO: test thoroughly
-    fn array_spec(&mut self) -> ArraySpec {
+    fn array_spec(&mut self) -> ArraySpec<Expr> {
         if !self.check(TokenType::LeftParen) {
             return ArraySpec::Scalar;
         } else {
@@ -629,7 +629,7 @@ impl Parser {
 Requires: self.peek() == Some(TokenType::Comma)
 Requires: indices is not empty
      */
-    fn assumed_shape(&mut self, mut indices: Vec<(Option<Expr>)>) -> ArraySpec {
+    fn assumed_shape(&mut self, mut indices: Vec<(Option<Expr>)>) -> ArraySpec<Expr> {
         let line = self.line;
         while !self.is_finished() {
             // each iteration processes if it should continue, or if
@@ -659,7 +659,7 @@ Requires: indices is not empty
     We don't know if we're processing an explicit_shaped or assumed_size
     specification, so we bundle them together in a single place.
      */
-    fn explicit_shape_or_assumed_size(&mut self, mut indices: Vec<(Option<Expr>,Expr)>) -> ArraySpec {
+    fn explicit_shape_or_assumed_size(&mut self, mut indices: Vec<(Option<Expr>,Expr)>) -> ArraySpec<Expr> {
         /*
         This processes the following grammar:
 
@@ -756,7 +756,7 @@ Requires: indices is not empty
         return args;
     }
 
-    fn determine_type_from_spec(&mut self, var_name: &String, spec: &Vec<Specification>)
+    fn determine_type_from_spec(&mut self, var_name: &String, spec: &Vec<Specification<Expr>>)
                                 -> Type {
         for entry in spec {
             if let Specification::TypeDeclaration(VarDeclaration{kind,
@@ -1905,7 +1905,7 @@ mod tests {
                        "  10  continue",
                        "       RETURN ",
                        "      end"].join("\n");
-            let mut spec = Vec::<Specification>::with_capacity(5);
+            let mut spec = Vec::<Specification<Expr>>::with_capacity(5);
             for var in ["m", "n", "bdim"] {
                 spec.push(Specification::TypeDeclaration(
                     VarDeclaration {
@@ -2047,7 +2047,7 @@ mod tests {
             let l = Lexer::new("      ((a*x + b)*x + c)*x + d".chars().collect());
             let mut parser = Parser::new(l);
             let rhs = parser.expr();
-            let mut spec = Vec::<Specification>::with_capacity(5);
+            let mut spec = Vec::<Specification<Expr>>::with_capacity(5);
             for var in ["x", "a", "b", "c", "d"] {
                 spec.push(Specification::TypeDeclaration(
                     VarDeclaration {
@@ -2100,7 +2100,7 @@ mod tests {
             let l = Lexer::new(src.chars().collect());
             let mut parser = Parser::new(l);
             let actual = parser.program();
-            let mut spec = Vec::<Specification>::with_capacity(2);
+            let mut spec = Vec::<Specification<Expr>>::with_capacity(2);
             spec.push(Specification::TypeDeclaration(
                 VarDeclaration {
                     kind: Type::Integer,
@@ -2159,7 +2159,7 @@ mod tests {
             let l = Lexer::new(src.chars().collect());
             let mut parser = Parser::new(l);
             let actual = parser.program();
-            let mut spec = Vec::<Specification>::with_capacity(2);
+            let mut spec = Vec::<Specification<Expr>>::with_capacity(2);
             spec.push(Specification::TypeDeclaration(
                 VarDeclaration {
                     kind: Type::Integer,
@@ -2280,7 +2280,7 @@ mod tests {
         #[test]
         fn f90_standard_parameter_example() {
             let src = "      PARAMETER (MODULUS = MOD (28, 3), SENATORS = 100)";
-            let mut expected = Vec::<Specification>::with_capacity(2);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(2);
             let mut args = Vec::<Expr>::with_capacity(2);
             args.push(Expr::Int64(28));
             args.push(Expr::Int64(3));
@@ -2296,7 +2296,7 @@ mod tests {
         #[test]
         fn explicit_array_spec_with_negative_start() {
             let src = "      REAL C(-3:12)";
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             let mut c_spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
             c_spec.push((Some(Expr::Unary(UnOp::Minus,
                                           Box::new(Expr::Int64(3)))),
@@ -2315,7 +2315,7 @@ mod tests {
         #[should_panic]
         fn malformed_array_spec() {
             let src = "      REAL C(-3:12, :*)";
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             let mut c_spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
             c_spec.push((Some(Expr::Unary(UnOp::Minus,
                                           Box::new(Expr::Int64(3)))),
@@ -2333,7 +2333,7 @@ mod tests {
         #[test]
         fn assumed_size_array_with_lower_bound() {
             let src = "      REAL C(-3:12, *)";
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             let mut c_spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
             c_spec.push((Some(Expr::Unary(UnOp::Minus,
                                           Box::new(Expr::Int64(3)))),
@@ -2351,7 +2351,7 @@ mod tests {
         #[test]
         fn explicit_array_with_lower_bound() {
             let src = "      REAL B(10:70)";
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             let mut b_spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
             b_spec.push((Some(Expr::Int64(10)), Expr::Int64(70)));
             expected.push(Specification::TypeDeclaration(
@@ -2367,7 +2367,7 @@ mod tests {
         #[test]
         fn scalar_and_array_params() {
             let src = "      REAL A,B(:)";
-            let mut expected = Vec::<Specification>::with_capacity(2);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(2);
             expected.push(Specification::TypeDeclaration(
                 VarDeclaration {
                     kind: Type::Real,
@@ -2390,7 +2390,7 @@ mod tests {
         #[test]
         fn malformed_assumed_size_with_var_param() {
             let src = "      REAL S(N,:)";
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             let mut s_spec = Vec::<(Option<Expr>,Expr)>::with_capacity(2);
             s_spec.push((None,Expr::Variable(String::from("N"))));
             s_spec.push((None,Expr::ErrorExpr));
@@ -2407,7 +2407,7 @@ mod tests {
         #[test]
         fn assumed_size_with_var_param() {
             let src = "      REAL S(N,*)";
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             let mut s_spec = Vec::<(Option<Expr>,Expr)>::with_capacity(1);
             s_spec.push((None,Expr::Variable(String::from("N"))));
             expected.push(Specification::TypeDeclaration(
@@ -2423,7 +2423,7 @@ mod tests {
         #[test]
         fn two_colon_indices_in_array_spec() {
             let src = "      REAL D(:,:)";
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             let mut d_spec = Vec::<Option<Expr>>::with_capacity(2);
             d_spec.push(None);
             d_spec.push(None);
@@ -2440,7 +2440,7 @@ mod tests {
         #[test]
         fn two_assumed_shape_arrays() {
             let src = "      REAL A(:), B(0:)";
-            let mut expected = Vec::<Specification>::with_capacity(2);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(2);
             let mut a_spec = Vec::<Option<Expr>>::with_capacity(1);
             a_spec.push(None);
             expected.push(Specification::TypeDeclaration(
@@ -2465,7 +2465,7 @@ mod tests {
         #[test]
         fn explicit_array_with_var() {
             let src = "      REAL W(n, 10)";
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             let mut spec = Vec::<(Option<Expr>, Expr)>::with_capacity(2);
             spec.push((None, Expr::Variable(String::from("n"))));
             spec.push((None, Expr::Int64(10)));
@@ -2487,7 +2487,7 @@ mod tests {
                 let l = Lexer::new($text.chars().collect());
                 let mut parser = Parser::new(l);
                 let actual = parser.specification();
-                let mut expected = Vec::<Specification>::with_capacity(1);
+                let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
                 expected.push(Specification::TypeDeclaration(
                     VarDeclaration {
                         kind: $expected_type,
@@ -2620,7 +2620,7 @@ mod tests {
             let l = Lexer::new(src.chars().collect());
             let mut parser = Parser::new(l);
             let actual = parser.specification();
-            let mut expected = Vec::<Specification>::with_capacity(4);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(4);
             expected.push(Specification::TypeDeclaration(
                 VarDeclaration {
                     kind: Type::Character,
@@ -2658,7 +2658,7 @@ mod tests {
             let l = Lexer::new(src.chars().collect());
             let mut parser = Parser::new(l);
             let actual = parser.specification();
-            let mut expected = Vec::<Specification>::with_capacity(3);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(3);
             expected.push(Specification::TypeDeclaration(
                 VarDeclaration {
                     kind: Type::Integer,
@@ -2689,7 +2689,7 @@ mod tests {
             let l = Lexer::new(src.chars().collect());
             let mut parser = Parser::new(l);
             let actual = parser.specification();
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             expected.push(Specification::TypeDeclaration(
                 VarDeclaration {
                     kind: Type::Logical,
@@ -2706,7 +2706,7 @@ mod tests {
             let l = Lexer::new(src.chars().collect());
             let mut parser = Parser::new(l);
             let actual = parser.specification();
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             let mut spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
             spec.push((None, Expr::Int64(17)));
             expected.push(Specification::TypeDeclaration(
@@ -2725,7 +2725,7 @@ mod tests {
             let l = Lexer::new(src.chars().collect());
             let mut parser = Parser::new(l);
             let actual = parser.specification();
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             let mut spec = Vec::<(Option<Expr>, Expr)>::with_capacity(2);
             spec.push((None, Expr::Int64(17)));
             spec.push((None, Expr::Int64(34)));
@@ -2745,7 +2745,7 @@ mod tests {
             let l = Lexer::new(src.chars().collect());
             let mut parser = Parser::new(l);
             let actual = parser.specification();
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             let mut spec = Vec::<(Option<Expr>, Expr)>::with_capacity(1);
             spec.push((None, Expr::Int64(17)));
             expected.push(Specification::TypeDeclaration(
@@ -2764,7 +2764,7 @@ mod tests {
             let l = Lexer::new(src.chars().collect());
             let mut parser = Parser::new(l);
             let actual = parser.specification();
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             expected.push(Specification::TypeDeclaration(
                 VarDeclaration {
                     kind: Type::Real,
@@ -2781,7 +2781,7 @@ mod tests {
             let l = Lexer::new(src.chars().collect());
             let mut parser = Parser::new(l);
             let actual = parser.specification();
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             expected.push(Specification::TypeDeclaration(
                 VarDeclaration {
                     kind: Type::Integer,
@@ -2798,7 +2798,7 @@ mod tests {
             let l = Lexer::new(src.chars().collect());
             let mut parser = Parser::new(l);
             let actual = parser.specification();
-            let mut expected = Vec::<Specification>::with_capacity(1);
+            let mut expected = Vec::<Specification<Expr>>::with_capacity(1);
             expected.push(Specification::TypeDeclaration(
                 VarDeclaration {
                     kind: Type::Character,
