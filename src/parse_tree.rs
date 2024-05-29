@@ -320,6 +320,19 @@ pub enum Specification<E: std::cmp::PartialEq> {
     Param (String, E),
 }
 
+impl<E: std::cmp::PartialEq> Specification<E> {
+    pub fn name_collides_with(&self, other: &VarDeclaration<E>) -> bool {
+        match (self, other) {
+            (Specification::TypeDeclaration (VarDeclaration {name: lhs, ..}),
+             VarDeclaration {name: rhs, ..}) => {
+                lhs == rhs
+            },
+            _ => false,
+        }
+    }
+}
+            
+
 impl<E: std::cmp::PartialEq> VarDeclaration<E> {
     pub fn rank(self) -> usize {
         self.array.rank()

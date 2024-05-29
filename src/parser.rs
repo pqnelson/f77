@@ -269,11 +269,22 @@ impl Parser {
      */
     fn specification(&mut self) -> Vec<Specification<Expr>> {
         let mut result = Vec::<Specification<Expr>>::with_capacity(16);
+        let line = self.line;
         while !self.is_finished() {
             if let Some(token) = self.peek() {
                 match token.token_type {
                     TokenType::Type(t) => {
                         for d in self.type_declarations() {
+                            // panic if duplicate variable declared
+                            for s in result.iter() {
+                                if s.name_collides_with(&d) {
+                                    panic!("Lines {}--{}: Two variables share same name {}",
+                                           line,
+                                           self.line,
+                                           &(d.name));
+                                }
+                            }
+                            // fresh names are saved in the spec queue
                             result.push(Specification::TypeDeclaration(d));
                         }
                     },
