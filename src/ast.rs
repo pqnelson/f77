@@ -46,13 +46,13 @@ mod disambiguate {
     use crate::ast::Expr;
 
     fn var_index<E: std::cmp::PartialEq>(name: &str,
-                                         spec: &Vec<Specification<E>>) -> Option<usize> {
+                                         spec: &[Specification<E>]) -> Option<usize> {
         for (idx, s) in spec.iter().enumerate() {
             if s.has_name(name) {
                 return Some(idx);
             }
         }
-        return None;
+        None
     }
 
     fn fn_index<E: std::cmp::PartialEq>(name: &str,
@@ -72,7 +72,7 @@ mod disambiguate {
             parse_tree::Expr::Int64(i) => Expr::Int64(*i),
             parse_tree::Expr::Logical(b) => Expr::Logical(*b),
             parse_tree::Expr::Variable(x) => {
-                match var_index(&x, spec) {
+                match var_index(x, spec) {
                     Some(i) => Expr::Variable(i),
                     None => panic!("No variable {x} found"),
                 }
@@ -95,11 +95,11 @@ mod disambiguate {
                     xs.push(expr(program, spec, arg));
                 }
                 // try looking up the name as an array
-                if let Some(idx) = var_index(&name, spec) {
+                if let Some(idx) = var_index(name, spec) {
                     return Expr::ArrayElement(idx, xs);
                 }
                 // or else go to the functions
-                if let Some(idx) = fn_index(&name, program) {
+                if let Some(idx) = fn_index(name, program) {
                     return Expr::FunCall(idx, xs);
                 }
                 panic!("Cannot disambiguate name {}", name);
@@ -110,7 +110,7 @@ mod disambiguate {
                     xs.push(expr(program, spec, arg));
                 }
                 // look up the functions
-                if let Some(idx) = fn_index(&f, program) {
+                if let Some(idx) = fn_index(f, program) {
                     return Expr::FunCall(idx, xs);
                 }
                 panic!("Cannot disambiguate function {}", f);
@@ -121,7 +121,7 @@ mod disambiguate {
                     idxs.push(expr(program, spec, index));
                 }
                 // look up the array variable
-                if let Some(idx) = var_index(&a, spec) {
+                if let Some(idx) = var_index(a, spec) {
                     return Expr::ArrayElement(idx, idxs);
                 }
                 panic!("Cannot disambiguate array name {}", a);
@@ -132,7 +132,7 @@ mod disambiguate {
                     idxs.push(expr(program, spec, index));
                 }
                 // look up the array variable
-                if let Some(idx) = var_index(&a, spec) {
+                if let Some(idx) = var_index(a, spec) {
                     return Expr::ArraySection(idx, idxs);
                 }
                 panic!("Cannot disambiguate array name {}", a);
@@ -153,10 +153,7 @@ mod disambiguate {
         fn optional_expr(e: &Option<parse_tree::Expr>,
                          p: &Program<parse_tree::Expr>,
                          ps: &Vec<Specification<Expr>>) -> Option<Expr> {
-            match e {
-                None => None,
-                Some(ex) => Some(expr(p, ps, &ex)),
-            }
+            e.as_ref().map(|ex| expr(p, ps, ex))
         }
         
         match spec {
@@ -167,7 +164,7 @@ mod disambiguate {
                     dims.push((optional_expr(start, program, prev_spec),
                                expr(program, prev_spec, stop)));
                 }
-                return ArraySpec::ExplicitShape(dims);
+                ArraySpec::ExplicitShape(dims)
             },
             ArraySpec::AssumedShape(v) => {
                 // v: Vec<Option<parse_tree::Expr>>
@@ -175,7 +172,7 @@ mod disambiguate {
                 for d in v {
                     dims.push(optional_expr(d, program, prev_spec));
                 }
-                return ArraySpec::AssumedShape(dims);
+                ArraySpec::AssumedShape(dims)
             },
             ArraySpec::AssumedSize(v, e) => {
                 // v: Vec<(Option<parse_tree::Expr>, parse_tree::Expr)>
@@ -185,8 +182,8 @@ mod disambiguate {
                     dims.push((optional_expr(start, program, prev_spec),
                                expr(program, prev_spec, stop)));
                 }
-                return ArraySpec::AssumedSize(dims,
-                                              optional_expr(e, program, prev_spec));
+                ArraySpec::AssumedSize(dims,
+                                       optional_expr(e, program, prev_spec))
             },
             ArraySpec::Scalar => ArraySpec::<Expr>::Scalar,
         }
@@ -247,7 +244,7 @@ mod disambiguate {
         // STUB, replace with sensible version in a moment
         let label = stmt.label;
         Statement::<Expr> {
-            label: label,
+            label,
             command: 
             match &stmt.command {
                 Command::Continue => Command::Continue,
@@ -255,14 +252,14 @@ mod disambiguate {
                 Command::Write(args) => {
                     let mut xs = Vec::<Expr>::with_capacity(args.len());
                     for arg in args {
-                        xs.push(expr(program, spec, &arg));
+                        xs.push(expr(program, spec, arg));
                     }
                     Command::Write(xs)
                 },
                 Command::Read(args) => {
                     let mut xs = Vec::<Expr>::with_capacity(args.len());
                     for arg in args {
-                        xs.push(expr(program, spec, &arg));
+                        xs.push(expr(program, spec, arg));
                     }
                     Command::Read(xs)
                 },
@@ -351,11 +348,11 @@ mod disambiguate {
                 for line in body {
                     stmts.push(statement(program, &sp, line));
                 }
-                return ProgramUnit::Program {
+                ProgramUnit::Program {
                     name: name.to_string(),
                     spec: sp,
                     body: stmts
-                };
+                }
             },
             ProgramUnit::Function {name, return_type, params, spec, body } => {
                 let mut sp = Vec::<Specification<Expr>>::with_capacity(spec.len());
@@ -366,13 +363,13 @@ mod disambiguate {
                 for line in body {
                     stmts.push(statement(program, &sp, line));
                 }
-                return ProgramUnit::Function {
+                ProgramUnit::Function {
                     name: name.to_string(),
                     return_type: *return_type,
                     params: params.to_vec(),
                     spec: sp,
                     body: stmts
-                };
+                }
             },
             ProgramUnit::Subroutine {name, params, spec, body} => {
                 let mut sp = Vec::<Specification<Expr>>::with_capacity(spec.len());
@@ -383,12 +380,12 @@ mod disambiguate {
                 for line in body {
                     stmts.push(statement(program, &sp, line));
                 }
-                return ProgramUnit::Subroutine {
+                ProgramUnit::Subroutine {
                     name: name.to_string(),
                     params: params.to_vec(),
                     spec: sp,
                     body: stmts
-                };
+                }
             },
             ProgramUnit::Empty => ProgramUnit::Empty,
         }
@@ -407,10 +404,10 @@ mod disambiguate {
         for sub in src.subroutines.iter() {
             subroutines.push(program_unit(&src, sub));
         }
-        return Program::<Expr> {
+        Program::<Expr> {
             program: main,
             functions: fns,
             subroutines
-        };
+        }
     }
 }

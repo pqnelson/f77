@@ -273,7 +273,7 @@ impl<E: std::cmp::PartialEq> ArraySpec<E> {
         match self {
             ArraySpec::ExplicitShape(v) => v.len(),
             ArraySpec::AssumedShape(v) => v.len(),
-            ArraySpec::AssumedSize(v, e) => v.len() + 1,
+            ArraySpec::AssumedSize(v, _) => v.len() + 1,
             ArraySpec::Scalar => 0,
         }
     }
@@ -402,14 +402,14 @@ impl<E: std::cmp::PartialEq> ProgramUnit<E> {
         }
     }
 
-    pub fn is_empty(self) -> bool {
+    pub fn is_empty(&self) -> bool {
         matches!(self, ProgramUnit::<E>::Empty)
     }
 
     pub fn is_named(&self, the_name: &str) -> bool {
-        return matches!(self, ProgramUnit::<E>::Program {name: the_name, ..})
+        matches!(self, ProgramUnit::<E>::Program {name: the_name, ..})
             || matches!(self, ProgramUnit::<E>::Function {name: the_name, ..})
-            || matches!(self, ProgramUnit::<E>::Subroutine {name: the_name, ..});
+            || matches!(self, ProgramUnit::<E>::Subroutine {name: the_name, ..})
     }
 
     pub fn get_name(&self) -> String {
@@ -487,7 +487,7 @@ impl<E: std::cmp::PartialEq> Program<E> {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     /**
@@ -504,7 +504,7 @@ impl<E: std::cmp::PartialEq> Program<E> {
         if let Some(idx) = self.subroutine_index(name) {
             return Some((idx, ProgramUnitKind::Subroutine));
         }
-        return None;
+        None
     }
 
     pub fn subroutine_index(&self, name: &str) -> Option<usize> {
@@ -513,7 +513,7 @@ impl<E: std::cmp::PartialEq> Program<E> {
                 return Some(idx);
             }
         }
-        return None;
+        None
     }
 
     /**

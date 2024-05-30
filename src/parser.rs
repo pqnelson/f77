@@ -214,7 +214,7 @@ impl Parser {
         while !self.is_finished() {
             nodes.push(self.program_unit());
         }
-        return nodes;
+        nodes
     }
     
     /* *****************************************************************
@@ -226,11 +226,11 @@ impl Parser {
                 TokenType::Program => return self.program(),
                 TokenType::Subroutine => return self.subroutine(),
                 TokenType::Function => return self.function(),
-                TokenType::Type(kind) => return self.function(),
+                TokenType::Type(_) => return self.function(),
                 _ => panic!("Expected a program unit, found {token}"),
             }
         }
-        return ProgramUnit::<Expr>::Empty;
+        ProgramUnit::<Expr>::Empty
     }
 
     /*
@@ -273,7 +273,7 @@ impl Parser {
         while !self.is_finished() {
             if let Some(token) = self.peek() {
                 match token.token_type {
-                    TokenType::Type(t) => {
+                    TokenType::Type(_) => {
                         for d in self.type_declarations() {
                             // panic if duplicate variable declared
                             for s in result.iter() {
@@ -301,7 +301,7 @@ impl Parser {
             }
         }
         result.shrink_to_fit();
-        return result;
+        result
     }
 
     /*
@@ -315,15 +315,15 @@ impl Parser {
         self.consume(TokenType::Parameter, "");
         self.consume(TokenType::LeftParen, "Parameter statement expects '('");
         while !self.is_finished() {
-            let name;
+            
             let id = self.advance();
-            match id.token_type {
-                TokenType::Identifier(v) => name = v.iter().collect(),
+            let name = match id.token_type {
+                TokenType::Identifier(v) => v.iter().collect(),
                 other => {
                     panic!("Expected identifier, found {:?}",
                            other);
                 },
-            }
+            };
             self.consume(TokenType::Equal, "Expected equality in parameter statement");
             let rhs = self.expr();
             params.push((name,rhs));
@@ -338,7 +338,7 @@ impl Parser {
         }
         self.consume(TokenType::RightParen, "Parameter statement should end with ')'");
         params.shrink_to_fit();
-        return params;
+        params
     }
     
     /*
@@ -369,35 +369,33 @@ impl Parser {
     fn determine_type(&mut self) -> Type {
         // get the basic type
         let token = self.advance();
-        let kind: BaseType;
-        match token.token_type {
+        let kind: BaseType = match token.token_type {
             TokenType::Type(b) => {
-                kind = b;
+                b
             },
             other => {
                 panic!("Line {}: type declaration expects type, found {:?}",
                        token.line,
-                       other);
+                       other)
             }
-        }
+        };
         let result;
         // determine if the next character is a "*"
         if self.check(TokenType::Star) {
             self.advance();
             // then get the modified size
             let size = self.advance();
-            let width;
-            match size.token_type {
+            let width = match size.token_type {
                 TokenType::Integer(x) => {
                     // parse the integer
-                    width = x.iter().collect::<String>().parse::<i32>().unwrap();
+                    x.iter().collect::<String>().parse::<i32>().unwrap()
                 },
                 other => {
                     panic!("Line {}: type declaration expects integer size, found {:?}",
                            size.line,
-                           other);
+                           other)
                 },
-            }
+            };
             match kind {
                 BaseType::Real => {
                     match width {
@@ -407,7 +405,7 @@ impl Parser {
                                       width);
                             result = Type::Real;
                         },
-                        1..=4 => result = Type::Real,
+                        4 => result = Type::Real,
                         5..=7 => {
                             eprintln!("Line {} Warning: REAL*{} invalid width, rounding up to REAL*8",
                                       self.line,
@@ -482,7 +480,7 @@ impl Parser {
                 BaseType::Logical => result = Type::Logical,
             };
         }
-        return result;
+        result
     }
     
     fn type_declarations(&mut self) -> Vec<VarDeclaration<Expr>> {
@@ -491,21 +489,21 @@ impl Parser {
         let kind: Type = self.determine_type();
         let mut results = Vec::<VarDeclaration<Expr>>::with_capacity(8);
         while !self.is_finished() {
-            let name;
+            
             let id = self.advance();
-            match id.token_type {
-                TokenType::Identifier(v) => name = v.iter().collect(),
+            let name = match id.token_type {
+                TokenType::Identifier(v) => v.iter().collect(),
                 other => {
                     panic!("Expected identifier, found {:?}",
                            other);
                 },
-            }
+            };
             let array = self.array_spec();
             // add variable declaration to statement
             results.push(VarDeclaration {
-                kind: kind,
-                name: name,
-                array: array
+                kind,
+                name,
+                array
             });
             // keep iterating while it's a list
             if self.check(TokenType::Comma) {
@@ -515,7 +513,7 @@ impl Parser {
             }
         };
         results.shrink_to_fit();
-        return results;
+        results
     }
     
     /*
@@ -550,7 +548,7 @@ impl Parser {
         if self.matches(&[TokenType::Star]) {
             self.advance();
             self.consume(TokenType::RightParen, "'*' expected to end array spec");
-            return ArraySpec::AssumedSize(Vec::<(Option::<Expr>, Expr)>::new(), None);
+            ArraySpec::AssumedSize(Vec::<(Option::<Expr>, Expr)>::new(), None)
         } else if self.matches(&[TokenType::Colon]) {
             self.advance();
             if self.matches(&[TokenType::Comma]) {
@@ -559,9 +557,7 @@ impl Parser {
                 return self.assumed_shape(indices);
             } else if self.matches(&[TokenType::RightParen]) {
                 self.advance();
-                let mut indices = Vec::<Option::<Expr>>::with_capacity(1);
-                indices.push(None);
-                return ArraySpec::AssumedShape(indices);
+                return ArraySpec::AssumedShape(vec![None]);
             } else {
                 // illegal form
                 let token = self.advance();
@@ -582,14 +578,12 @@ impl Parser {
                     return self.assumed_shape(indices);
                 } else if self.matches(&[TokenType::RightParen]) {
                     // "(7:)"
-                    let mut indices = Vec::<Option::<Expr>>::with_capacity(1);
-                    indices.push(Some(lower));
-                    return ArraySpec::AssumedShape(indices);
+                    return ArraySpec::AssumedShape(vec![Some(lower)]);
                 } else if self.matches(&[TokenType::Star]) {
                     // "(7:*)"
                     self.advance();
                     self.consume(TokenType::RightParen, "array spec should end with *");
-                    let mut indices = Vec::<(Option::<Expr>, Expr)>::new();
+                    let indices = Vec::<(Option::<Expr>, Expr)>::new();
                     return ArraySpec::AssumedSize(indices, Some(lower));
                 } else {
                     // "(7:15...)"
@@ -603,9 +597,7 @@ impl Parser {
                     } else if self.matches (&[TokenType::RightParen]) {
                         // "(7:15)"
                         self.advance();
-                        let mut indices = Vec::<(Option::<Expr>,Expr)>::with_capacity(1);
-                        indices.push((Some(lower),upper));
-                        return ArraySpec::ExplicitShape(indices);
+                        return ArraySpec::ExplicitShape(vec![(Some(lower),upper)]);
                     } else {
                         // "(7:???)", i.e., illegal form...
                         let token = self.advance();
@@ -617,15 +609,11 @@ impl Parser {
             } else if self.matches(&[TokenType::Comma]) {
                 // "(7, ...)"
                 self.advance();
-                let mut indices = Vec::<(Option::<Expr>, Expr)>::with_capacity(8);
-                indices.push((None, lower));
-                return self.explicit_shape_or_assumed_size(indices);
+                return self.explicit_shape_or_assumed_size(vec![(None,lower)]);
             } else if self.matches(&[TokenType::RightParen]) {
                 // "(7)"
                 self.advance();
-                let mut indices = Vec::<(Option::<Expr>, Expr)>::with_capacity(1);
-                indices.push((None, lower));
-                return ArraySpec::ExplicitShape(indices);
+                return ArraySpec::ExplicitShape(vec![(None,lower)]);
             } else {
                 // (expr<something unexpected>);
                 let token = self.advance();
@@ -640,7 +628,7 @@ impl Parser {
 Requires: self.peek() == Some(TokenType::Comma)
 Requires: indices is not empty
      */
-    fn assumed_shape(&mut self, mut indices: Vec<(Option<Expr>)>) -> ArraySpec<Expr> {
+    fn assumed_shape(&mut self, mut indices: Vec<Option<Expr>>) -> ArraySpec<Expr> {
         let line = self.line;
         while !self.is_finished() {
             // each iteration processes if it should continue, or if
@@ -764,7 +752,7 @@ Requires: indices is not empty
         }
         self.consume(TokenType::RightParen, "Dummy arguments expected to end with ')'");
         args.shrink_to_fit();
-        return args;
+        args
     }
 
     fn determine_type_from_spec(&mut self, var_name: &String, spec: &Vec<Specification<Expr>>)
@@ -838,7 +826,7 @@ Requires: indices is not empty
             panic!("LINE {} function has no return statement",
                    line);
         }
-        return ProgramUnit::Function { name, return_type, params, spec, body };
+        ProgramUnit::Function { name, return_type, params, spec, body }
     }
 
     /* Subroutines *must* include a `return` statement.
@@ -879,7 +867,7 @@ Requires: indices is not empty
             panic!("LINE {} subroutine has no return statement",
                    line);
         }
-        return ProgramUnit::<Expr>::Subroutine { name, params, spec, body };
+        ProgramUnit::<Expr>::Subroutine { name, params, spec, body }
     }
 
     /*
@@ -913,7 +901,7 @@ Requires: indices is not empty
                 body.push(stmt);
             }
         }
-        return ProgramUnit::<Expr>::Program { name, spec, body };
+        ProgramUnit::<Expr>::Program { name, spec, body }
     }
     
     /* *****************************************************************
@@ -986,18 +974,17 @@ Requires: indices is not empty
      */
     fn goto_statement(&mut self, label: Option<i32>) -> Statement<Expr> {
         assert!(TokenType::Goto == self.advance().token_type);
-        let target: i32;
         let t = self.advance();
-        match t.token_type {
+        let target: i32 = match t.token_type {
             TokenType::Integer(v) => {
-                target = v.iter().collect::<String>().parse::<i32>().unwrap();
+                v.iter().collect::<String>().parse::<i32>().unwrap()
             },
             other => {
                 panic!("Line {} GOTO expected a label, found {}",
                        t.line,
-                       other);
+                       other)
             },
-        }
+        };
         Statement::<Expr> {
             label,
             command: Command::Goto(target),
@@ -1107,7 +1094,7 @@ Requires: indices is not empty
                 TokenType::Integer(_) => {
                     /* TODO: issue warning here, since arithmetic-if is
                      * bad style */
-                    return self.arithmetic_if(label, test);
+                    self.arithmetic_if(label, test)
                 },
                 // warn about "if (...) goto wherever"?
                 _ => self.if_statement(label, test),
@@ -1532,17 +1519,17 @@ Requires: indices is not empty
                 TokenType::Call => self.call_subroutine(label),
                 TokenType::Stop => {
                     self.advance();
-                    Statement::<Expr> { label: label,
+                    Statement::<Expr> { label,
                                         command: Command::Stop }
                 },
                 TokenType::Return => {
                     self.advance();
-                    Statement::<Expr> { label: label,
+                    Statement::<Expr> { label,
                                         command: Command::Return }
                 },
                 TokenType::End => {
                     self.advance();
-                    Statement::<Expr> { label: label,
+                    Statement::<Expr> { label,
                                         command: Command::End }
                 },
                 _ => {
@@ -1826,15 +1813,15 @@ named_data_ref = identifier
             // CASE 2: a function call
             if self.matches(&[TokenType::RightParen]) {
                 self.advance();
-                return Expr::FunCall(v.into_iter().collect(),
-                                     Vec::new());
+                Expr::FunCall(v.into_iter().collect(),
+                                     Vec::new())
             } else {
                 // CASE 3: array section, array element, or function
                 // call with arguments
                 let e = self.array_section_or_fn_call(v.into_iter().collect());
                 self.consume(TokenType::RightParen,
                              "Expected ')' closing array access or function call");
-                return e;
+                e
             }
         } else {
             panic!("This should never be reached! Expected an identifier, received {}", identifier);
@@ -1847,9 +1834,8 @@ named_data_ref = identifier
         let arg = self.expr();
         self.consume(TokenType::RightParen,
                      "Right paren expected in 'REAL' conversion function call");
-        let mut args = Vec::<Expr>::with_capacity(1);
-        args.push(arg);
-        return Expr::FunCall(String::from("REAL"), args);
+        let args = vec![arg];
+        Expr::FunCall(String::from("REAL"), args)
     }
     
     /*
@@ -2386,7 +2372,7 @@ mod tests {
                     array: ArraySpec::Scalar,
                 }
             ));
-            let mut b_spec = Vec::<(Option<Expr>)>::with_capacity(1);
+            let mut b_spec = Vec::<Option<Expr>>::with_capacity(1);
             b_spec.push(None);
             expected.push(Specification::TypeDeclaration(
                 VarDeclaration {
