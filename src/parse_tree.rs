@@ -23,7 +23,7 @@ which may be interesting to peruse further.
 
 // pub mod parse_tree {
 //    use super::*;
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum BinOp {
     Plus, Minus, Times, Divide, Power,
     // relational operators
@@ -57,7 +57,7 @@ pub fn token_to_binop(token: Token) -> BinOp {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum UnOp {
     Plus, Minus,
     Not
@@ -133,10 +133,6 @@ pub enum Expr {
     Int64(i64),
     Logical(bool),
     Variable(String),
-    // de Bruijn indices for various named data reference disambiguation
-    VariableIndex(usize),
-    FunctionIndex(usize),
-    SubroutineIndex(usize),
     // TODO: consider adding a Subscript(Box<Expr>) to remind myself
     //       of a lingering burden to check during typechecking?
     // array slice section: start, stop, stride
@@ -149,10 +145,6 @@ pub enum Expr {
     FunCall(String, Vec<Expr>),
     ArrayElement(String, Vec<Expr>), // e.g., "MYARRAY(3,65,2)"
     ArraySection(String, Vec<Expr>), // e.g., "MYARRAY(3:65)"
-    // composite expressions transformed to use de Bruijn indices
-    IndexedFunCall(usize, Vec<Expr>),
-    IndexedArrayElement(usize, Vec<Expr>),
-    IndexedArraySection(usize, Vec<Expr>),
     // placeholder, should never be forced to arrive here
     ErrorExpr,
 }
@@ -176,7 +168,7 @@ pub enum Command<E: std::cmp::PartialEq> {
              var: E,
              start: E,
              stop: E,
-             stride: Option<Expr>,
+             stride: Option<E>,
              body: Vec<Statement<E>>,
              terminal: Box<Statement<E>>},
     CallSubroutine {
@@ -322,16 +314,46 @@ pub enum Specification<E: std::cmp::PartialEq> {
 
 impl<E: std::cmp::PartialEq> Specification<E> {
     pub fn name_collides_with(&self, other: &VarDeclaration<E>) -> bool {
-        match (self, other) {
-            (Specification::TypeDeclaration (VarDeclaration {name: lhs, ..}),
-             VarDeclaration {name: rhs, ..}) => {
-                lhs == rhs
+        self.has_name(&(other.name))
+    }
+    pub fn has_name(&self, other_name: &str) -> bool {
+        match self {
+            Specification::TypeDeclaration (VarDeclaration {name, ..}) => {
+                name == other_name
             },
             _ => false,
         }
     }
 }
-            
+
+#[test]
+fn spec_has_name() {
+    let spec = Specification::TypeDeclaration(VarDeclaration {
+        name: String::from("my_spec_name"),
+        kind: Type::Logical,
+        array: ArraySpec::<Expr>::Scalar,
+    });
+    assert!(spec.has_name("my_spec_name"));
+}
+
+#[test]
+fn spec_doesnt_have_name() {
+    let spec = Specification::TypeDeclaration(VarDeclaration {
+        name: String::from("my_spec_name"),
+        kind: Type::Logical,
+        array: ArraySpec::<Expr>::Scalar,
+    });
+    assert!(!spec.has_name("different_name"));
+}
+
+#[test]
+fn param_spec_doesnt_have_name() {
+    let spec = Specification::Param(
+        String::from("x"),
+        Expr::ErrorExpr
+    );
+    assert!(!spec.has_name("different_name"));
+}
 
 impl<E: std::cmp::PartialEq> VarDeclaration<E> {
     pub fn rank(self) -> usize {
@@ -473,19 +495,19 @@ impl<E: std::cmp::PartialEq> Program<E> {
     the name (if there's a matching function or subroutine). When
     there's no match, `None` is returned.
      */
-    pub fn index_for(self, name: String) -> Option<(usize,ProgramUnitKind)> {
+    pub fn index_for(&self, name: &str) -> Option<(usize,ProgramUnitKind)> {
         for (idx, f) in self.functions.iter().enumerate() {
-            if f.is_named(&name) {
+            if f.is_named(name) {
                 return Some((idx, ProgramUnitKind::Function));
             }
         }
-        if let Some(idx) = self.subroutine_index(&name) {
+        if let Some(idx) = self.subroutine_index(name) {
             return Some((idx, ProgramUnitKind::Subroutine));
         }
         return None;
     }
 
-    pub fn subroutine_index(self, name: &str) -> Option<usize> {
+    pub fn subroutine_index(&self, name: &str) -> Option<usize> {
         for (idx, sub) in self.subroutines.iter().enumerate() {
             if sub.is_named(name) {
                 return Some(idx);
