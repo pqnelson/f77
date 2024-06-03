@@ -416,6 +416,29 @@ mod disambiguate {
     mod tests {
         use super::*;
 
+        #[test]
+        #[should_panic]
+        fn implicit_params_should_panic() {
+            let src = ["      subroutine scale1(c, m, n, B, bdim)",
+                       "      INTEGER m, n, bdim",
+                       "      REAL c, B(bdim, *)",
+                       "C",
+                       "C  Overwrites the m-by-n matrix with cB.",
+                       "C  The array B has row dimension bdim.",
+                       "C",
+                       "      do 10 j = 1,n",
+                       "        do 5 i=1,m",
+                       "          B(i,j) = c*B(i,j)",
+                       "   5    continue",
+                       "  10  continue",
+                       "       RETURN ",
+                       "      end"].join("\n");
+            let l = crate::lexer::Lexer::new(src.chars().collect());
+            let mut parser = crate::parser::Parser::new(l);
+            let actual = program(parser.parse_all());
+            assert_eq!(actual, actual);
+        }
+
         /* van Loan and Coleman, pg 62 */
         #[test]
         fn subroutine_scale1() {
