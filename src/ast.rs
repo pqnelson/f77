@@ -8,6 +8,7 @@ use crate::parse_tree::{
     ProgramUnit,
     ProgramUnitKind,
     Program,
+    Type,
     VarDeclaration,
 };
 use crate::parse_tree;
@@ -408,6 +409,147 @@ mod disambiguate {
             program: main,
             functions: fns,
             subroutines
+        }
+    }
+
+
+    mod tests {
+        use super::*;
+
+        /* van Loan and Coleman, pg 62 */
+        #[test]
+        fn subroutine_scale1() {
+            let src = ["      subroutine scale1(c, m, n, B, bdim)",
+                       "      INTEGER m, n, bdim",
+                       "      REAL c, B(bdim, *)",
+                       "      INTEGER i, j",
+                       "C",
+                       "C  Overwrites the m-by-n matrix with cB.",
+                       "C  The array B has row dimension bdim.",
+                       "C",
+                       "      do 10 j = 1,n",
+                       "        do 5 i=1,m",
+                       "          B(i,j) = c*B(i,j)",
+                       "   5    continue",
+                       "  10  continue",
+                       "       RETURN ",
+                       "      end"].join("\n");
+            let mut spec = Vec::<Specification<Expr>>::with_capacity(7);
+            for var in ["m", "n", "bdim"] {
+                spec.push(Specification::TypeDeclaration(
+                    VarDeclaration {
+                        kind: Type::Integer,
+                        name: String::from(var),
+                        array: ArraySpec::<Expr>::Scalar,
+                    }
+                ));
+            }
+            spec.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("c"),
+                    array: ArraySpec::<Expr>::Scalar,
+                }
+            ));
+            let mut bdim_shape = Vec::<(Option<Expr>,Expr)>::with_capacity(1);
+            bdim_shape.push((None, Expr::Variable(2_usize)));
+            spec.push(Specification::TypeDeclaration(
+                VarDeclaration {
+                    kind: Type::Real,
+                    name: String::from("B"),
+                    array: ArraySpec::AssumedSize(bdim_shape, None),
+                }
+            ));
+            for var in ["i", "j"] {
+                spec.push(Specification::TypeDeclaration(
+                    VarDeclaration {
+                        kind: Type::Integer,
+                        name: String::from(var),
+                        array: ArraySpec::<Expr>::Scalar,
+                    }
+                ));
+            }
+            let mut inner_body = Vec::<Statement::<Expr>>::with_capacity(1);
+            
+            // rhs = c*B(i,j)
+            let mut b_indices = Vec::<Expr>::with_capacity(2);
+            b_indices.push(Expr::Variable(5_usize));
+            b_indices.push(Expr::Variable(6_usize));
+            let rhs = Expr::Binary(Box::new(Expr::Variable(3_usize)),
+                                   BinOp::Times,
+                                   Box::new(Expr::ArrayElement(4_usize, b_indices)));
+            // lhs = B(i, j)
+            let mut b_indices = Vec::<Expr>::with_capacity(2);
+            b_indices.push(Expr::Variable(5_usize));
+            b_indices.push(Expr::Variable(6_usize));
+            let lhs = Expr::ArrayElement(4_usize, b_indices);
+            inner_body.push(Statement::<Expr> {
+                label: None,
+                command: Command::Assignment { lhs, rhs },
+            });
+            let inner = Statement::<Expr> {
+                label: None,
+                command: Command::LabelDo {
+                    target_label: 5,
+                    var: Expr::Variable(5_usize),
+                    start: Expr::Int64(1),
+                    stop: Expr::Variable(0_usize),
+                    stride: None,
+                    body: inner_body,
+                    terminal: Box::new(Statement {
+                        label: Some(5),
+                        command: Command::Continue,
+                    })
+                }
+            };
+            let mut outer_body = Vec::<Statement::<Expr>>::with_capacity(1);
+            outer_body.push(inner);
+            let outer = Statement::<Expr> {
+                label: None,
+                command: Command::LabelDo {
+                    target_label: 10,
+                    var: Expr::Variable(6_usize),
+                    start: Expr::Int64(1),
+                    stop: Expr::Variable(1_usize),
+                    stride: None,
+                    body: outer_body,
+                    terminal: Box::new(Statement {
+                        label: Some(10),
+                        command: Command::Continue,
+                    })
+                }
+            };
+            let mut body = Vec::<Statement::<Expr>>::with_capacity(6);
+            body.push(outer);
+            body.push(Statement::<Expr> {
+                label: None,
+                command: Command::Return,
+            });
+            body.push(Statement::<Expr> {
+                label: None,
+                command: Command::End,
+            });
+            body.shrink_to_fit();
+            let mut params = Vec::<String>::with_capacity(5); 
+            for var in ["c", "m", "n", "B", "bdim"] {
+                params.push(String::from(var));
+            }
+            let scale1 = ProgramUnit::<Expr>::Subroutine {
+                name: String::from("scale1"),
+                params,
+                spec,
+                body
+            };
+            let expected = Program {
+                program: ProgramUnit::<Expr>::Empty,
+                functions: Vec::<ProgramUnit::<Expr>>::new(),
+                subroutines: vec![scale1]
+            };
+            // now ask the parser for what it gives with everything else
+            let l = crate::lexer::Lexer::new(src.chars().collect());
+            let mut parser = crate::parser::Parser::new(l);
+            let actual = program(parser.parse_all());
+            assert_eq!(actual, expected);
         }
     }
 }
