@@ -1,8 +1,23 @@
 \section{Introduction}
 
 \subsection{Why Fortran?}
-Fortran is the \emph{lingua franca} for numerical analysis, and \FORTRAN/~77
-is suitably simple enough for writing a compiler. It's a ``blub''
-language, ostensibly describable by a Hoare logic. This gives us a way
-to verify the implementation (as realized by the compiler) matches the
-specification (as described by the Hoare logic).
+Fortran is the \emph{lingua franca} for numerical analysis, and
+\FORTRAN/~77 is suitably simple enough for writing a compiler. It's a
+``blub'' language, ostensibly describable by a suitable semantics. This
+gives us a way to verify the implementation (as realized by the
+compiler) matches the specification (as described by the Hoare logic).
+
+Arguably, ``old Testament \FORTRAN/'' is close to assembly to a fault.
+Without \texttt{goto} and arithmetic-if statements, \FORTRAN/~77 is no
+longer Turing complete. It's unclear whether this is significant for
+numerical analysis or not, since numerical analysis is so narrowly
+focused on particular problems that full Turing completeness may not be
+needed. 
+
+\subsection{Outline of paper}
+In Section~\ref{section:specification} we describe the subset of
+\FORTRAN/~77 supported by our compiler.
+
+In Section~\ref{section:hoare}, we outline the literature on attempts to
+formally define ``old Testament \FORTRAN/'' using Hoare logic and
+algebraic semantics.

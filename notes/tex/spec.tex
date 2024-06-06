@@ -1,4 +1,4 @@
-\section{Specification}
+\section{Specification}\label{section:specification}
 We will now describe the grammar for our particular subset of \FORTRAN/~77.
 This is similar to that found in the first chapter of van Loan and
 Coleman~\cite{vanloan1987handbook}. The goal will be that any program
@@ -246,7 +246,19 @@ Assignments have the form:
 $\langle$\textit{variable\/}$\rangle$ \texttt{=} $\langle$\textit{expression\/}$\rangle$
 \end{quote}
 
-\subsection{Declarations}
+\subsection{Specification Statements}
+The first portion of any program unit (the main \texttt{program}, function, subroutine)
+consists of specification statements. \FORTRAN/ has about 8
+specification statements, but we restrict focus to only 2: type
+declarations for variables, and parameter statements.
+
+The unsupported specification statements are: equivalence, common,
+dimension, implicit declarations, external declarations (that a
+parameter is really a ``function pointer''), intrinsic declarations, and
+save statements. There are compelling reasons to support common
+statements for \FORTRAN/~77, which approximate a module system.
+
+\subsubsection{Declarations}
 The declaration area consists of a sequence of declaration
 statements. This looks like:
 \begin{quote}
@@ -272,12 +284,13 @@ C the area of a circle with radius r.
       stop
       end
 \end{lstlisting}
-\subsubsection{Identifiers}
+
+\subsubsection*{Identifiers}
 Identifiers in \FORTRAN/ must involve no more than six characters chosen
 from the alphanumeric set \texttt{ABC\dots XYZ0123456789}, and must
 begin with a letter.
 
-\subsubsection{Types}
+\subsubsection*{Types}
 We only really need 4 types, though \FORTRAN/~77 had 6 types. The types
 we support: \texttt{integer}, \texttt{real} (for floating-point
 numbers), \texttt{logical} (for Boolean values), and \texttt{character}.
@@ -287,7 +300,7 @@ numbers, \texttt{real*8} refers to double precision floating-point
 numbers, and \texttt{real*16} refers to quad precision floating-point
 numbers [if supported].
 
-\subsubsection{Arrays}
+\subsubsection*{Arrays}
 We declare arrays by adding its dimension to the variable name, e.g.,
 \begin{lstlisting}
       real a(20)
@@ -297,6 +310,25 @@ where multi-dimensional arrays simply add the dimensions with commas. It
 is stored in memory as the sequence: $A(1,1)$, $A(1,2)$, \dots,
 $A(1,5)$, $A(2,1)$, \dots, $A(2,5)$, $A(3,1)$, $A(3,2)$, \dots, $A(3,5)$.
 For locality, you would want to loop over the right-most indexes first.
+
+\subsubsection{Parameter Specifications}
+When we want to make an identifier a parameter (i.e., a constant), we
+need to use parameter specifications. These look like:
+
+\begin{tabular}{rcl}
+$\langle$\textit{parameter\/}$\rangle$ & $::=$ &
+\texttt{parameter (}$\langle$\textit{param list\/}$\rangle$\texttt{)}\\
+$\langle$\textit{param list\/}$\rangle$ & $::=$ & $\langle$\textit{identifier\/}$\rangle$\texttt{ = }$\langle$\textit{expr\/}$\rangle$\\
+&$\mid$ & $\langle$\textit{identifier\/}$\rangle$\texttt{ = }$\langle$\textit{expr\/}$\rangle$
+\texttt{,} $\langle$\textit{param list\/}$\rangle$
+\end{tabular}
+
+\noindent We can treat any identifier found in a parameter specification as
+shorthand for the value produced from the expression bound to it in its
+specification statement.
+
+No identifier may appear in two or more specification statements, that
+should be an error.
 
 \subsection{Expressions}
 We will work with a subset of all possible \FORTRAN/~77

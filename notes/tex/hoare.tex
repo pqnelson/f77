@@ -1,4 +1,4 @@
-\section{Hoare Logic}
+\section{Hoare Logic}\label{section:hoare}
 Having sketched out informally the syntax and semantics for the fragment
 of \FORTRAN/~77 our compiler is targeting, we would like to now focus on
 providing a Hoare logic for the fragment of \FORTRAN/. For the most
@@ -9,6 +9,13 @@ working with arrays.
 
 The game plan is to write down the inference rules for the various
 statements we will encounter in a \FORTRAN/ program unit.
+
+\subsection{Problems}
+After further thought, this would work well for a structured programming
+language like Pascal or something. But \FORTRAN/ is notoriously
+\emph{unstructured}. The alternative way to give semantics to \FORTRAN/
+would either be via operational semantics or denotational semantics.
+Personally, I feel more at home with denotational semantics.
 
 \subsection{Inference rules}
 Statements in \FORTRAN/ can have optional labels (so we can invoke

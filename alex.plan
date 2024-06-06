@@ -1,4 +1,120 @@
 <!--- -*- mode: Markdown; var: -*- -->
+# 2024-06-05T10:25:33-0700
+
+I have implemented the disambiguation for parse trees, to produce an AST
+using de Bruijn indices. It's not hard now to write a tree-walking
+interpreter for Fortran 77 using this.
+
+The basic roadmap could be carved up thus:
+
+- Front-end stuff
+  - [ ] Typechecking
+  - [ ] "Intrinsic function" support (i.e., what are the "primitive functions"
+        provided by Fortran)
+- Middle-end stuff
+  - [ ] Transform `Program::<ast::Expr>` into a three-address code SSA
+        intermediate representation
+  - [ ] Optimizations (dead code elimination is dead simple in SSA)
+- Backend stuff
+  - [ ] Register allocation
+  - [ ] Instruction selection
+  - [ ] Code generation
+
+## Intrinsic functions
+
+The intrinsic functions provided by FORTRAN 77 need to be
+implemented. I'm not going to do them all (but in principle, I
+could). Following van Loan and Coleman's _Handbook for Matrix Computations_,
+(SIAM, 1983?, pp. 101-103) I should support some (large subset) of:
+
+- Integer and real functions
+  - [ ] `int(x)` for sign of `x` times largest integer not greater than `abs(x)`
+    (basically `int(x) = sign(floor(abs(x)),x)` as an integer)...for example: `int(-3.7) = -3`.
+  - [ ] `nint(x)` for rounding to nearest integer
+  - [ ] `mod(x,y) = x - y*int(x/y)`
+  - [ ] `sign(x,y)` for the sign of `y` times `abs(x)`
+  - [ ] `max(x1, x2, ...)` variadic maximum function
+  - [ ] `min(x1, x2, ...)` variadic minimum function
+- Real functions (which requires determining which of these can be
+  implemented as assembly operations, and which are provided by the
+  Fortran compiler as a sort of "standard library")
+  - [ ] `abs(x)`
+  - [ ] `sqrt(x)`
+  - [ ] `exp(x)`
+  - [ ] `log(x)` for natural logarithm
+  - [ ] `log10(x)` for common logarithm
+  - [ ] `cosh(x)`
+  - [ ] `sinh(x)`
+  - [ ] `tanh(x)`
+  - [ ] `cos(x)`
+  - [ ] `sin(x)`
+  - [ ] `tan(x)`
+  - [ ] `acos(x)`
+  - [ ] `asin(x)`
+  - [ ] `atan(x)`
+- Complex functions...no...
+- String
+  - [ ] `length(s)`
+  - [ ] `index(s1,s2)` location of `s2` in `s1`
+  - [ ] `ichar(s)` converts character to integer
+  - [ ] `char(i)` converts integer to character
+- Type conversion
+  - [ ] `int(x)` convert to integer
+  - [ ] `real(x)` convert to single precision
+  - [ ] `dble(x)` convert to double precision
+  - `cmplx(x,y)` convert to complex (no)
+
+There is some difficulty, as you can see, with the return type for these
+functions. It's worth looking at what the [SUN Fortran 77 Compiler does](https://docs.oracle.com/cd/E19957-01/805-4939/6j4m0vnc8/index.html)
+with its intrinsic functions.
+
+## Intermediate Representation
+
+Three-address code can be described as clustering "instructions" into an
+array of "simple blocks". The intuition for a simple block is just a
+sequence of instructions.
+
+The instructions should be seen as an abstract assembly code. Towards
+that end, usually Jouette assembly code is used as the "floor model" for
+the opcodes.
+
+There is also the "convenient fiction" of a phi statement. Basically,
+this appears in assignment statements, and looks like:
+
+```ebnf
+var "=" "PHI(" var {"," var} ")"
+```
+
+The intuition is to take whichever argument of `PHI` is defined. It's
+introduced to avoid duplicate variable assignments; think of a program
+like:
+
+```fortran
+if (test_condition) then
+    x = y1
+else
+    x = y2
+end if
+```
+
+This would be compiled to something like
+
+```
+# in one block
+t1 = y1
+# in another block
+t2 = y2
+# in a third block
+x = PHI(t1, t2)
+```
+
+For more about simple blocks, etc., see:
+
+- Matthias Braun, Sebastian Buchwald, Sebastian Hack, Roland Leißa,
+  Christoph Mallon, and Andreas Zwinkau,
+  "Simple and Efficient Construction of Static Single Assignment Form".
+  https://c9x.me/compile/bib/braun13cc.pdf
+
 # 2024-05-29T08:41:15-0700
 
 I have refactored the structure of the abstract syntax tree to make an
